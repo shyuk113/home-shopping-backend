@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Shop - 도메인 테스트</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f8f9fa; padding-top: 50px; }
+    .card { margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .header-title { color: #333; font-weight: bold; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 30px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2 class="header-title">Mini Shop Domain Test Page</h2>
+
+  <div class="row">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-primary text-white">상품 등록 (Item Save)</div>
+        <div class="card-body">
+          <form id="itemSaveForm">
+            <div class="mb-3">
+              <label class="form-label">상품명</label>
+              <input type="text" id="itemName" class="form-control" placeholder="상품명을 입력하세요">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">가격</label>
+              <input type="number" id="itemPrice" class="form-control" placeholder="0">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">재고 수량</label>
+              <input type="number" id="itemQuantity" class="form-control" placeholder="0">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">상품 설명 (@Lob 대신 String)</label>
+              <textarea id="itemDesc" class="form-control" rows="2"></textarea>
+            </div>
+            <button type="button" class="btn btn-primary w-100" onclick="saveItem()">등록하기</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-success text-white">주문 하기 (Order Process)</div>
+        <div class="card-body">
+          <form id="orderForm">
+            <div class="mb-3">
+              <label class="form-label">회원 ID</label>
+              <input type="number" id="memberId" class="form-control" placeholder="Member ID">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">상품 ID</label>
+              <input type="number" id="orderItemId" class="form-control" placeholder="Item ID">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">주문 수량</label>
+              <input type="number" id="orderCount" class="form-control" placeholder="1">
+            </div>
+            <hr>
+            <h6>배송지 정보 (Address VO)</h6>
+            <div class="row">
+              <div class="col-6 mb-2"><input type="text" id="city" class="form-control" placeholder="시/도"></div>
+              <div class="col-6 mb-2"><input type="text" id="street" class="form-control" placeholder="도로명"></div>
+            </div>
+            <button type="button" class="btn btn-success w-100 mt-2" onclick="placeOrder()">주문하기</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-info text-white">상품 상세 조회 (Redis Caching Test)</div>
+        <div class="card-body">
+          <div class="input-group mb-3">
+            <input type="number" id="searchId" class="form-control" placeholder="조회할 상품 ID 입력">
+            <button class="btn btn-info text-white" type="button" onclick="findItem()">조회 (Redis/DB)</button>
+          </div>
+          <div id="searchResult" class="p-3 bg-light border rounded" style="display: none;">
+            <strong>조회 결과:</strong>
+            <pre id="resultJson" class="mt-2 mb-0"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 1. 상품 저장 API 호출
+  async function saveItem() {
+    // 1. 화면의 입력값 가져오기
+    const data = {
+      name: document.getElementById('itemName').value,
+      price: parseInt(document.getElementById('itemPrice').value),
+      quantity: parseInt(document.getElementById('itemQuantity').value),
+      description: document.getElementById('itemDesc').value
+    };
+
+    try {
+      // 2. 백엔드 API 호출 (POST 방식)
+      const response = await fetch('http://localhost:8080/api/items', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data) // DTO 형태로 변환
+      });
+
+      if (response.ok) {
+        const savedId = await response.json();
+        alert(`상품 등록 성공! 생성된 ID: ${savedId}`);
+        // 등록 성공 후 입력창 초기화
+        document.getElementById('itemSaveForm').reset();
+      } else {
+        const errorMsg = await response.text();
+        alert("등록 실패: " + errorMsg);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      alert("서버와 통신할 수 없습니다.");
+    }
+  }
+
+  // 2. 주문 실행 API 호출
+  async function placeOrder() {
+    const data = {
+      memberId: parseInt(document.getElementById('memberId').value),
+      itemId: parseInt(document.getElementById('orderItemId').value),
+      quantity: parseInt(document.getElementById('orderCount').value)
+    };
+
+    try {
+      const response = await fetch('http://localhost:8080/api/items/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (response.ok) {
+        alert("주문 성공!");
+      } else {
+        const error = await response.text();
+        alert("주문 실패: " + error);
+      }
+
+    } catch (error) {
+      console.error(error);
+      alert("서버 통신 실패");
+    }
+  }
+
+
+  // 3. 상품 조회 (캐싱 확인용)
+  // 기존 findItem 함수를 아래와 같이 수정하세요
+  async function findItem() {
+    const id = document.getElementById('searchId').value;
+    const resultArea = document.getElementById('searchResult');
+    const jsonArea = document.getElementById('resultJson');
+
+    try {
+      // 실제 백엔드 API 호출
+      const response = await fetch(`http://localhost:8080/api/items/${id}`);
+
+      if (!response.ok) {
+        throw new Error("상품을 찾을 수 없거나 서버 에러가 발생했습니다.");
+      }
+
+      const data = await response.json(); // 백엔드에서 받은 실제 DTO 데이터
+
+      resultArea.style.display = 'block';
+      jsonArea.textContent = JSON.stringify(data, null, 2);
+    } catch (error) {
+      alert(error.message);
+      resultArea.style.display = 'none';
+    }
+  }
+</script>
+
+</body>
+</html>
