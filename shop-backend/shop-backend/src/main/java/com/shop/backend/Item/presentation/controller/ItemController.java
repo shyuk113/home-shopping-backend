@@ -4,9 +4,7 @@ import com.shop.backend.Item.application.service.ItemService;
 import com.shop.backend.Item.presentation.dto.request.ItemDetailDto;
 import com.shop.backend.Item.presentation.dto.request.ItemSaveDto;
 import com.shop.backend.Item.presentation.dto.request.ItemUpdateDto;
-import com.shop.backend.Item.presentation.dto.response.ItemResponseDto;
 import java.util.List;
-import java.util.concurrent.atomic.LongAccumulator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -43,7 +41,7 @@ public class ItemController {
         return ResponseEntity.ok(id);
     }
 
-    @PutMapping("/{id")
+    @PutMapping("/{id}")
     public ResponseEntity<Void> updateItem(@PathVariable("id") Long itemId,@RequestBody ItemUpdateDto itemUpdateDto){
         itemService.updateItem(itemId,itemUpdateDto);
         return ResponseEntity.ok().build();
