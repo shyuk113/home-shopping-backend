@@ -29,4 +29,23 @@ public class AuthService {
             member.getRole().name()
         );
     }
+
+    public String signup(String email, String password,String name, String address, String phoneNumber){
+        if (memberRepository.findByEmail(email).isPresent()){
+            throw new RuntimeException("이미 가입된 이메일 입니다");
+        }
+
+        Member member = Member.builder()
+            .email(email)
+            .password(passwordEncoder.encode(password))
+            .name("default")
+            .address("default")
+            .phone("default")
+            .role(Member.Role.USER)
+            .build();
+
+        memberRepository.save(member);
+
+        return "회원가입이 완료되었습니다"+ member.getEmail();
+    }
 }

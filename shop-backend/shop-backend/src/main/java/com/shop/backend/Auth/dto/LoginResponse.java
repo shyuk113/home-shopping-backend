@@ -1,8 +1,11 @@
 package com.shop.backend.Auth.dto;
 
+import lombok.Getter;
+
+@Getter
 public class LoginResponse {
 
-    String token;
+    private final String token;
 
     public LoginResponse(String token) {
 
