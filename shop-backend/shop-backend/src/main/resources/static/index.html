@@ -16,6 +16,53 @@
 <div class="container">
   <h2 class="header-title">Mini Shop Domain Test Page</h2>
 
+  <div class="row mb-4">
+    <!-- 회원가입 -->
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-dark text-white">회원가입 (Sign Up)</div>
+        <div class="card-body">
+          <form id="signupForm">
+            <div class="mb-3">
+              <label class="form-label">이메일</label>
+              <input type="email" id="signupEmail" class="form-control">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">비밀번호</label>
+              <input type="password" id="signupPassword" class="form-control">
+            </div>
+            <button type="button" class="btn btn-dark w-100" onclick="signup()">회원가입</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 로그인 -->
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-warning text-dark">로그인 (JWT 발급)</div>
+        <div class="card-body">
+          <form id="loginForm">
+            <div class="mb-3">
+              <label class="form-label">이메일</label>
+              <input type="email" id="loginEmail" class="form-control">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">비밀번호</label>
+              <input type="password" id="loginPassword" class="form-control">
+            </div>
+            <button type="button" class="btn btn-warning w-100" onclick="login()">로그인</button>
+          </form>
+
+          <hr>
+          <h6>발급된 JWT</h6>
+          <textarea id="jwtToken" class="form-control" rows="3" readonly></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
   <div class="row">
     <div class="col-md-6">
       <div class="card">
@@ -110,6 +157,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + accessToken
         },
         body: JSON.stringify(data) // DTO 형태로 변환
       });
@@ -184,7 +232,72 @@
       resultArea.style.display = 'none';
     }
   }
+
+  let accessToken = null;
+
+  // 1️⃣ 회원가입
+  async function signup() {
+    const data = {
+      email: document.getElementById('signupEmail').value,
+      password: document.getElementById('signupPassword').value
+    };
+
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (response.ok) {
+        alert("회원가입 성공!");
+        document.getElementById('signupForm').reset();
+      } else {
+        const error = await response.text();
+        alert("회원가입 실패: " + error);
+      }
+
+    } catch (error) {
+      alert("서버 통신 실패");
+    }
+  }
+
+  // 2️⃣ 로그인 (JWT 발급)
+  async function login() {
+    const data = {
+      email: document.getElementById('loginEmail').value,
+      password: document.getElementById('loginPassword').value
+    };
+
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        throw new Error("로그인 실패");
+      }
+
+      const result = await response.json();
+
+      accessToken = result.token; // LoginResponse에서 token 반환한다고 가정
+      document.getElementById('jwtToken').value = accessToken;
+
+      alert("로그인 성공! JWT 발급 완료");
+
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
 </script>
 
 </body>
 </html>
+
