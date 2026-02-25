@@ -32,7 +32,7 @@ public class CartService {
             .orElseThrow(() -> new RuntimeException("존재하지 않는 상품입니다"));
         Member member = memberRepository.findById(memberId).orElseThrow();
 
-        Cart cart = cartRepository.findById(memberId).orElseGet(() ->
+        Cart cart = cartRepository.findByMemberId(memberId).orElseGet(() ->
         {Cart newCart = new Cart();
         newCart.setMember(member);
         return cartRepository.save(newCart);
@@ -54,16 +54,20 @@ public class CartService {
 
 
     @Transactional
-    public List<CartAddItemRequestDto> getAllcartItems() {
-        return cartItemRepository.findAll().stream()
-            .map(cart ->
-                new CartAddItemRequestDto(cart.getItem().getId(),
-                    cart.getQuantity()
+    public List<CartAddItemRequestDto> getAllcartItems(Long memberId) {
+        return cartItemRepository.findByCart_Member_Id(memberId).stream()
+            .map(cartItem ->
+                new CartAddItemRequestDto(
+                    cartItem.getItem().getId(),
+                    cartItem.getQuantity()
                 ))
             .toList();
     }
 
-    public void clearCartItem(Long itemId){
-        cartItemRepository.deleteById(itemId);
+    @Transactional
+    public void clearCartItem(Long memberId, Long itemId){
+        CartItem cartItem = cartItemRepository.findByItem_IdAndCart_Member_Id(itemId, memberId)
+            .orElseThrow(()-> new RuntimeException("장바구니에 존재하지 않는 상품입니다"));
+        cartItemRepository.delete(cartItem);
     }
 }

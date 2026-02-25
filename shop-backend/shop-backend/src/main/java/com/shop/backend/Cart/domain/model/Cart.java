@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ public class Cart {
     private Long id;
 
     @OneToOne
+    @JoinColumn(name = "member_id", unique=true)
     private Member member;
 
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL)

@@ -5,8 +5,10 @@ import com.shop.backend.Cart.presentation.dto.request.CartAddItemRequestDto;
 import com.shop.backend.Cart.presentation.dto.request.CartDeleteItemRequestDto;
 import com.shop.backend.Member.domain.model.Member;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,25 +19,27 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/cart")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "*")
 public class CartController {
 
-    private CartService cartService;
+    private final CartService cartService;
 
-    @PostMapping("/{id}")
+    @PostMapping
     public ResponseEntity<?> addToCart(@AuthenticationPrincipal Member member, @RequestBody CartAddItemRequestDto cartAddItemRequestDto) {
         cartService.addToCart(member.getId(), cartAddItemRequestDto);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping
-    public ResponseEntity<List<CartAddItemRequestDto>> getCart() {
-        List<CartAddItemRequestDto> cartItems = cartService.getAllcartItems();
+    public ResponseEntity<List<CartAddItemRequestDto>> getCart(@AuthenticationPrincipal Member member) {
+        List<CartAddItemRequestDto> cartItems = cartService.getAllcartItems(member.getId());
         return ResponseEntity.ok(cartItems);
     }
 
     @DeleteMapping("/{itemId}")
-    public ResponseEntity<?> clearCartItem(@PathVariable Long itemId) {
-        cartService.clearCartItem(itemId);
+    public ResponseEntity<?> clearCartItem(@PathVariable("itemId") Long itemId,@AuthenticationPrincipal Member member) {
+        cartService.clearCartItem(member.getId(), itemId);
         return ResponseEntity.ok().build();
     }
 }
