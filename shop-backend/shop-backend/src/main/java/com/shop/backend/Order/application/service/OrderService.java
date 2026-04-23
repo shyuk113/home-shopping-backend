@@ -1,5 +1,6 @@
 package com.shop.backend.Order.application.service;
 
+import com.shop.backend.Item.application.service.ItemService;
 import com.shop.backend.Item.domain.model.Item;
 import com.shop.backend.Item.domain.repository.ItemRepository;
 import com.shop.backend.Member.domain.model.Member;
@@ -19,11 +20,14 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final MemberRepository memberRepository;
     private final ItemRepository itemRepository;
+    private final ItemService itemService;
 
     @Transactional
     public Long order(Long memberId, Long itemId, int quantity){
         Member member = memberRepository.findById(memberId).orElseThrow();
         Item item = itemRepository.findById(itemId).orElseThrow();
+
+        itemService.reduceStock(itemId,quantity);
 
         OrderItem orderItem = OrderItem.createOrderItem(item, item.getPrice(), quantity);
 

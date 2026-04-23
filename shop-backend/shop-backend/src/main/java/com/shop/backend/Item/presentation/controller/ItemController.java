@@ -25,29 +25,29 @@ public class ItemController {
 
     private final ItemService itemService;
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id}") //아이템 상세 조회
     public ResponseEntity<ItemDetailDto> getItem(@PathVariable("id") Long id){
         return ResponseEntity.ok(itemService.findItemDetail(id));
     }
 
-    @GetMapping
+    @GetMapping //모든 아이템 조회, 추후 페이징 처리 필요
     public ResponseEntity<List<ItemDetailDto>> getAllItems(){
         return ResponseEntity.ok(itemService.findAllItemDetail());
     }
 
-    @PostMapping
+    @PostMapping //아이템 등록
     public ResponseEntity<Long> createItem(@RequestBody ItemSaveDto itemSaveDto){
         Long id = itemService.saveItem(itemSaveDto);
         return ResponseEntity.ok(id);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{id}") //아이템 수정
     public ResponseEntity<Void> updateItem(@PathVariable("id") Long itemId,@RequestBody ItemUpdateDto itemUpdateDto){
         itemService.updateItem(itemId,itemUpdateDto);
         return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id}") //아이템 삭제
     public ResponseEntity<Void> deleteItem(@PathVariable("id") Long itemId){
         itemService.deleteItem(itemId);
         return ResponseEntity.ok().build();
