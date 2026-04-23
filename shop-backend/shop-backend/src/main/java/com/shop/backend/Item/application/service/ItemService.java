@@ -93,4 +93,11 @@ public class ItemService {
         itemRepository.deleteById(id);
     }
 
+    @CacheEvict(value="item", key="#p0")
+    @Transactional
+    public void reduceStock(Long itemId, int quantity){
+        Item item = itemRepository.findById(itemId).orElseThrow();
+        item.removeStock(quantity);
+    }
+
 }

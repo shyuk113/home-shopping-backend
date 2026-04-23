@@ -1,5 +1,6 @@
 package com.shop.backend.Item.domain.model;
 
+import com.shop.backend.global.exception.OutOfStockException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -49,9 +50,12 @@ public class Item {
     public void removeStock(int quantity){
         int restStock = this.quantity - quantity;
         if(restStock < 0) {
-            throw new IllegalArgumentException("재고가 부족합니다.");
+            throw new OutOfStockException("재고가 부족합니다. 현재 남은 재고: " + this.quantity);
         }
         this.quantity = restStock;
+        if(this.quantity == 0){
+            this.status = ItemStatus.SOLD_OUT;
+        }
     }
 
     public void addStock(int quantity){
@@ -62,6 +66,7 @@ public class Item {
         this.name = name;
         this.price = price;
         this.quantity = quantity;
+        this.status = quantity > 0 ? ItemStatus.SELLING : ItemStatus.SOLD_OUT;
     }
 
 
