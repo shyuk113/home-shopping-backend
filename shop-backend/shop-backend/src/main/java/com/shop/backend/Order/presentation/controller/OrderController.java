@@ -29,17 +29,17 @@ public class OrderController {
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping() //주문 조회
+    @GetMapping //주문 조회
     public ResponseEntity<String> get() {
         return ResponseEntity.ok("");
     }
 
-    @GetMapping("{id}") //주문 상세 조회
+    @GetMapping("/{id}") //주문 상세 조회
     public ResponseEntity<String> getDetail() {
         return ResponseEntity.ok("");
     }
 
-    @DeleteMapping("{id}") //주문 취소
+    @DeleteMapping("/{id}") //주문 취소
     public ResponseEntity<String> cancel() {
         return ResponseEntity.ok("");
     }

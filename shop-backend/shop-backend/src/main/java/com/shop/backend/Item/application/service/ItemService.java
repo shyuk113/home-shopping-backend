@@ -6,6 +6,7 @@ import com.shop.backend.Item.presentation.dto.request.ItemDetailDto;
 import com.shop.backend.Item.presentation.dto.request.ItemSaveDto;
 import com.shop.backend.Item.presentation.dto.request.ItemUpdateDto;
 import com.shop.backend.Item.presentation.dto.response.ItemResponseDto;
+import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +42,7 @@ public class ItemService {
     public ItemDetailDto findItemDetail(Long id){
         System.out.println("DB 조회 실행됨");
 
-        Item item = itemRepository.findById(id).orElseThrow();
+        Item item = itemRepository.findById(id).orElseThrow(() -> new EntityNotFoundException("존재하지 않는 상품입니다."));
 
         return new ItemDetailDto(
             item.getId(),
@@ -69,7 +70,7 @@ public class ItemService {
 
     @Transactional(readOnly = true)
     public int getStock(Long id){
-        Item item = itemRepository.findById(id).orElseThrow();
+        Item item = itemRepository.findById(id).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 상품입니다"));
         return item.getQuantity();
     }
 
@@ -83,7 +84,7 @@ public class ItemService {
     @CacheEvict(value = "item", key = "#p0") //상품 수정시 캐시 무효화
     @Transactional
     public void updateItem(Long itemId, ItemUpdateDto itemUpdateDto){
-        Item item = itemRepository.findById(itemId).orElseThrow();
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 상품입니다."));
         item.update(itemUpdateDto.itemName(),itemUpdateDto.price(),itemUpdateDto.quantity());
     }
 
@@ -96,7 +97,7 @@ public class ItemService {
     @CacheEvict(value="item", key="#p0")
     @Transactional
     public void reduceStock(Long itemId, int quantity){
-        Item item = itemRepository.findById(itemId).orElseThrow();
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 상품입니다."));
         item.removeStock(quantity);
     }
 

@@ -11,6 +11,7 @@ import com.shop.backend.Item.domain.model.Item;
 import com.shop.backend.Item.domain.repository.ItemRepository;
 import com.shop.backend.Member.domain.model.Member;
 import com.shop.backend.Member.domain.repository.MemberRepository;
+import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +30,9 @@ public class CartService {
     @Transactional
     public void addToCart(Long memberId, CartAddItemRequestDto cartAddItemRequestDto) {
         Item item = itemRepository.findById(cartAddItemRequestDto.itemId())
-            .orElseThrow(() -> new RuntimeException("존재하지 않는 상품입니다"));
-        Member member = memberRepository.findById(memberId).orElseThrow();
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 상품입니다"));
+        Member member = memberRepository.findById(memberId).orElseThrow(()->
+        new EntityNotFoundException("존재하지 않는 회원입니다."));
 
         Cart cart = cartRepository.findByMemberId(memberId).orElseGet(() ->
         {Cart newCart = new Cart();
@@ -67,7 +69,7 @@ public class CartService {
     @Transactional
     public void clearCartItem(Long memberId, Long itemId){
         CartItem cartItem = cartItemRepository.findByItem_IdAndCart_Member_Id(itemId, memberId)
-            .orElseThrow(()-> new RuntimeException("장바구니에 존재하지 않는 상품입니다"));
+            .orElseThrow(()-> new EntityNotFoundException("장바구니에 존재하지 않는 상품입니다"));
         cartItemRepository.delete(cartItem);
     }
 }

@@ -8,6 +8,7 @@ import com.shop.backend.Member.domain.repository.MemberRepository;
 import com.shop.backend.Order.domain.model.Order;
 import com.shop.backend.Order.domain.model.OrderItem;
 import com.shop.backend.Order.domain.repository.OrderRepository;
+import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,10 +25,8 @@ public class OrderService {
 
     @Transactional
     public Long order(Long memberId, Long itemId, int quantity){
-        Member member = memberRepository.findById(memberId).orElseThrow();
-        Item item = itemRepository.findById(itemId).orElseThrow();
-
-        itemService.reduceStock(itemId,quantity);
+        Member member = memberRepository.findById(memberId).orElseThrow(()-> new EntityNotFoundException("Member not found"));
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("Item not found"));
 
         OrderItem orderItem = OrderItem.createOrderItem(item, item.getPrice(), quantity);
 
