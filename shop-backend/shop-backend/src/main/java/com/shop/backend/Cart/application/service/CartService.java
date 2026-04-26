@@ -1,7 +1,5 @@
 package com.shop.backend.Cart.application.service;
 
-import static java.util.stream.Collectors.toList;
-
 import com.shop.backend.Cart.domain.model.Cart;
 import com.shop.backend.Cart.domain.model.CartItem;
 import com.shop.backend.Cart.domain.repository.CartItemRepository;

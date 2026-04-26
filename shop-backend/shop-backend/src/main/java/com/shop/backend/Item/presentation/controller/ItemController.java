@@ -1,7 +1,7 @@
 package com.shop.backend.Item.presentation.controller;
 
 import com.shop.backend.Item.application.service.ItemService;
-import com.shop.backend.Item.presentation.dto.request.ItemDetailDto;
+import com.shop.backend.Item.presentation.dto.response.ItemDetailDto;
 import com.shop.backend.Item.presentation.dto.request.ItemSaveDto;
 import com.shop.backend.Item.presentation.dto.request.ItemUpdateDto;
 import jakarta.validation.Valid;

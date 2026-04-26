@@ -5,6 +5,7 @@ import com.shop.backend.Order.presentation.dto.request.OrderRequest;
 import com.shop.backend.Order.presentation.dto.response.OrderResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,6 +22,7 @@ import java.util.List;
 @RequestMapping("/api/orders")
 @CrossOrigin(origins = "*")
 @RequiredArgsConstructor
+@Slf4j
 public class OrderController {
 
     private final OrderService orderService;
@@ -28,7 +30,7 @@ public class OrderController {
     @PostMapping //주문 요청
     public ResponseEntity<?> order(@Valid @RequestBody OrderRequest orderRequest){
 
-        System.out.println("주문 요청 들어옴");
+        log.debug("주문 요청 받음: memberId={}, itemId={}, quantity={}", orderRequest.memberId(), orderRequest.itemId(), orderRequest.quantity());
 
         orderService.order(orderRequest.memberId(), orderRequest.itemId(), orderRequest.quantity());
         return ResponseEntity.ok().build();

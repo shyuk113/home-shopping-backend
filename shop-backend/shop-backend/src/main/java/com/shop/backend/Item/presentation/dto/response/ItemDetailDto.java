@@ -1,4 +1,4 @@
-package com.shop.backend.Item.presentation.dto.request;
+package com.shop.backend.Item.presentation.dto.response;
 
 import com.shop.backend.Item.domain.model.ItemStatus;
 
