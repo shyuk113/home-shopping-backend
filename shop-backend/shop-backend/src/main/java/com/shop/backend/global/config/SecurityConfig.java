@@ -19,7 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @RequiredArgsConstructor
-
+@EnableWebSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
@@ -34,6 +34,11 @@ public class SecurityConfig {
                 .requestMatchers("/", "/index.html").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.GET,"/api/items/**").permitAll()
+                .requestMatchers("/api/items/orders/**").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/items/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/items/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/items/**").hasRole("ADMIN")
+                .requestMatchers("/api/cart/**").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

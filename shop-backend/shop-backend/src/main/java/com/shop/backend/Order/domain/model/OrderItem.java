@@ -11,7 +11,6 @@ import jakarta.persistence.ManyToOne;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.transaction.annotation.Transactional;
 
 @Entity
 @Getter @Setter
@@ -37,11 +36,10 @@ public class OrderItem {
 
     public static OrderItem createOrderItem(Item item, int orderPrice, int quantity){
         OrderItem orderItem = new OrderItem();
-        orderItem.item = item;
-        orderItem.orderPrice = orderPrice;
-        orderItem.quantity = quantity;
-
         orderItem.setItem(item);
+        orderItem.setOrderPrice(orderPrice);
+        orderItem.setQuantity(quantity);
+
         item.removeStock(quantity);
 
         return orderItem;

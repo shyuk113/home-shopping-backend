@@ -4,6 +4,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import java.util.Date;
+import javax.crypto.SecretKey;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -26,13 +27,13 @@ public class JwtProvider {
             .claim("role",role)
             .setIssuedAt(now)
             .setExpiration(expiry)
-            .signWith(Keys.hmacShaKeyFor(secretKey.getBytes()), SignatureAlgorithm.HS256)
+            .signWith(getSigningKey(), SignatureAlgorithm.HS256)
             .compact();
     }
 
     public String getEmail(String token){
         return Jwts.parserBuilder()
-            .setSigningKey(secretKey.getBytes())
+            .setSigningKey(getSigningKey())
             .build()
             .parseClaimsJws(token)
             .getBody()
@@ -42,12 +43,16 @@ public class JwtProvider {
     public boolean validateToken(String token){
         try{
             Jwts.parserBuilder()
-                .setSigningKey(secretKey.getBytes())
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token);
             return true;
         } catch (Exception e){
             return false;
         }
+    }
+
+    public SecretKey getSigningKey(){
+        return Keys.hmacShaKeyFor(secretKey.getBytes());
     }
 }

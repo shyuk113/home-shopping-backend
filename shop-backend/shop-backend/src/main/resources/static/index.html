@@ -138,6 +138,50 @@
       </div>
     </div>
   </div>
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-secondary text-white">장바구니 테스트</div>
+        <div class="card-body">
+
+          <!-- 장바구니 추가 -->
+          <h6>🛒 장바구니 추가</h6>
+          <div class="row mb-3">
+            <div class="col-4">
+              <input type="number" id="cartItemId" class="form-control" placeholder="Item ID">
+            </div>
+            <div class="col-4">
+              <input type="number" id="cartQuantity" class="form-control" placeholder="수량">
+            </div>
+            <div class="col-4">
+              <button class="btn btn-secondary w-100" onclick="addToCart()">추가</button>
+            </div>
+          </div>
+
+          <hr>
+
+          <!-- 장바구니 조회 -->
+          <h6>📦 장바구니 조회</h6>
+          <button class="btn btn-dark mb-3" onclick="getCart()">내 장바구니 보기</button>
+          <pre id="cartResult" class="bg-light p-3 border rounded"></pre>
+
+          <hr>
+
+          <!-- 장바구니 삭제 -->
+          <h6>❌ 장바구니 삭제</h6>
+          <div class="row">
+            <div class="col-6">
+              <input type="number" id="deleteCartItemId" class="form-control" placeholder="CartItem ID">
+            </div>
+            <div class="col-6">
+              <button class="btn btn-danger w-100" onclick="deleteCartItem()">삭제</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -190,6 +234,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + accessToken
         },
         body: JSON.stringify(data)
       });
@@ -295,6 +340,91 @@
       alert(error.message);
     }
   }
+
+  // 🛒 장바구니 추가
+  async function addToCart() {
+
+    if (!accessToken) {
+      alert("먼저 로그인하세요");
+      return;
+    }
+
+    const data = {
+      itemId: parseInt(document.getElementById('cartItemId').value),
+      quantity: parseInt(document.getElementById('cartQuantity').value)
+    };
+
+    const response = await fetch('http://localhost:8080/api/cart', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + accessToken
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (response.ok) {
+      alert("장바구니 추가 성공");
+    } else {
+      const error = await response.text();
+      alert("추가 실패: " + error);
+    }
+  }
+
+
+  // 📦 장바구니 조회
+  async function getCart() {
+
+    if (!accessToken) {
+      alert("먼저 로그인하세요");
+      return;
+    }
+
+    const response = await fetch('http://localhost:8080/api/cart', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + accessToken
+      }
+    });
+
+    if (!response.ok) {
+      alert("조회 실패 (403이면 JWT 문제)");
+      return;
+    }
+
+    const result = await response.json();
+    document.getElementById('cartResult').textContent =
+        JSON.stringify(result, null, 2);
+  }
+
+
+  // ❌ 장바구니 삭제
+  async function deleteCartItem() {
+
+    if (!accessToken) {
+      alert("먼저 로그인하세요");
+      return;
+    }
+
+    const itemId = document.getElementById('deleteCartItemId').value;
+
+    const response = await fetch(
+        `http://localhost:8080/api/cart/${itemId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': 'Bearer ' + accessToken
+          }
+        }
+    );
+
+    if (response.ok) {
+      alert("삭제 성공");
+    } else {
+      alert("삭제 실패 (권한 확인)");
+    }
+  }
+
 
 </script>
 

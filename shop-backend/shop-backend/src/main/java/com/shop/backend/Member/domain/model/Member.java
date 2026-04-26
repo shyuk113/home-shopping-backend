@@ -7,7 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import javax.management.relation.Role;
+
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -50,6 +50,12 @@ public class Member {
         this.email = email;
         this.password = password;
         this.role = role;
+        this.address = address;
+    }
+
+    public void update(String name, String phone,String address){
+        this.name = name;
+        this.phone = phone;
         this.address = address;
     }
 

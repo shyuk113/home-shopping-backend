@@ -22,10 +22,6 @@ public class RedisConfig {
                 .entryTtl(Duration.ofMinutes(10)) // 캐시 기본 유효기간 10분
                 .serializeValuesWith(
                     RedisSerializationContext.SerializationPair
-                        .fromSerializer(RedisSerializer.string())
-                )
-                .serializeValuesWith(
-                    RedisSerializationContext.SerializationPair
                         .fromSerializer(RedisSerializer.json())
                 );
         return RedisCacheManager.builder(connectionFactory)
