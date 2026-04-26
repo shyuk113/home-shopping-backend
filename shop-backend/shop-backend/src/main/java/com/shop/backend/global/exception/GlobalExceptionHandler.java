@@ -45,6 +45,20 @@ public class GlobalExceptionHandler {
             .body(ErrorResponse.of(message));
     }
 
+    @ExceptionHandler(CouponOutOfStockException.class)
+    public ResponseEntity<ErrorResponse> handleCouponOutOfStock(CouponOutOfStockException e) {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of(e.getMessage()));
+    }
+
+    @ExceptionHandler(DuplicateCouponException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateCoupon(DuplicateCouponException e) {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handlerException(Exception e){
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
