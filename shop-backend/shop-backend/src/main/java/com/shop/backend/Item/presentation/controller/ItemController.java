@@ -43,7 +43,7 @@ public class ItemController {
     }
 
     @PutMapping("/{id}") //아이템 수정
-    public ResponseEntity<Void> updateItem(@PathVariable("id") Long itemId,@RequestBody ItemUpdateDto itemUpdateDto){
+    public ResponseEntity<Void> updateItem(@PathVariable("id") Long itemId, @Valid @RequestBody ItemUpdateDto itemUpdateDto){
         itemService.updateItem(itemId,itemUpdateDto);
         return ResponseEntity.ok().build();
     }
