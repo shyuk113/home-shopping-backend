@@ -4,6 +4,7 @@ import com.shop.backend.Auth.dto.LoginRequest;
 import com.shop.backend.Auth.dto.LoginResponse;
 import com.shop.backend.Auth.dto.SignUpRequest;
 import com.shop.backend.Auth.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -21,7 +22,7 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request){
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request){
 
         String token = authService.login(
             request.getEmail(),
@@ -32,7 +33,7 @@ public class AuthController {
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<?> signup(@RequestBody SignUpRequest request){
+    public ResponseEntity<?> signup(@Valid @RequestBody SignUpRequest request){
         authService.signup(request.getEmail(),
             request.getPassword(), request.getName(),
             request.getAddress(), request.getPhoneNumber());

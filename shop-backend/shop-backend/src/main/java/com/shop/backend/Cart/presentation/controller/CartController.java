@@ -3,7 +3,9 @@ package com.shop.backend.Cart.presentation.controller;
 import com.shop.backend.Cart.application.service.CartService;
 import com.shop.backend.Cart.presentation.dto.request.CartAddItemRequestDto;
 import com.shop.backend.Cart.presentation.dto.request.CartDeleteItemRequestDto;
+import com.shop.backend.Cart.presentation.dto.response.CartItemResponseDto;
 import com.shop.backend.Member.domain.model.Member;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -26,14 +28,14 @@ public class CartController {
     private final CartService cartService;
 
     @PostMapping
-    public ResponseEntity<?> addToCart(@AuthenticationPrincipal Member member, @RequestBody CartAddItemRequestDto cartAddItemRequestDto) {
+    public ResponseEntity<?> addToCart(@AuthenticationPrincipal Member member,@Valid @RequestBody CartAddItemRequestDto cartAddItemRequestDto) {
         cartService.addToCart(member.getId(), cartAddItemRequestDto);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping
-    public ResponseEntity<List<CartAddItemRequestDto>> getCart(@AuthenticationPrincipal Member member) {
-        List<CartAddItemRequestDto> cartItems = cartService.getAllcartItems(member.getId());
+    public ResponseEntity<List<CartItemResponseDto>> getCart(@AuthenticationPrincipal Member member) {
+        List<CartItemResponseDto> cartItems = cartService.getAllcartItems(member.getId());
         return ResponseEntity.ok(cartItems);
     }
 

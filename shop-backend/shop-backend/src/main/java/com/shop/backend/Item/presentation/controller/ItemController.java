@@ -4,6 +4,7 @@ import com.shop.backend.Item.application.service.ItemService;
 import com.shop.backend.Item.presentation.dto.request.ItemDetailDto;
 import com.shop.backend.Item.presentation.dto.request.ItemSaveDto;
 import com.shop.backend.Item.presentation.dto.request.ItemUpdateDto;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -36,7 +37,7 @@ public class ItemController {
     }
 
     @PostMapping //아이템 등록
-    public ResponseEntity<Long> createItem(@RequestBody ItemSaveDto itemSaveDto){
+    public ResponseEntity<Long> createItem(@Valid @RequestBody ItemSaveDto itemSaveDto){
         Long id = itemService.saveItem(itemSaveDto);
         return ResponseEntity.ok(id);
     }
