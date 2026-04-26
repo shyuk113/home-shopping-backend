@@ -7,6 +7,7 @@ import com.shop.backend.Cart.domain.model.CartItem;
 import com.shop.backend.Cart.domain.repository.CartItemRepository;
 import com.shop.backend.Cart.domain.repository.CartRepository;
 import com.shop.backend.Cart.presentation.dto.request.CartAddItemRequestDto;
+import com.shop.backend.Cart.presentation.dto.response.CartItemResponseDto;
 import com.shop.backend.Item.domain.model.Item;
 import com.shop.backend.Item.domain.repository.ItemRepository;
 import com.shop.backend.Member.domain.model.Member;
@@ -56,13 +57,9 @@ public class CartService {
 
 
     @Transactional
-    public List<CartAddItemRequestDto> getAllcartItems(Long memberId) {
+    public List<CartItemResponseDto> getAllcartItems(Long memberId) {
         return cartItemRepository.findByCart_Member_Id(memberId).stream()
-            .map(cartItem ->
-                new CartAddItemRequestDto(
-                    cartItem.getItem().getId(),
-                    cartItem.getQuantity()
-                ))
+            .map(CartItemResponseDto::from)
             .toList();
     }
 
