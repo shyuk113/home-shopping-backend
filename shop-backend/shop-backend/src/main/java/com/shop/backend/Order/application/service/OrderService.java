@@ -23,7 +23,6 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final MemberRepository memberRepository;
     private final ItemRepository itemRepository;
-    private final ItemService itemService;
 
     @Transactional
     public Long order(Long memberId, Long itemId, int quantity){
