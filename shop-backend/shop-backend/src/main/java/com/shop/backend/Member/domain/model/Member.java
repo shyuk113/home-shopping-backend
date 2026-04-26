@@ -53,5 +53,11 @@ public class Member {
         this.address = address;
     }
 
+    public void update(String name, String phone,String address){
+        this.name = name;
+        this.phone = phone;
+        this.address = address;
+    }
+
 
 }
