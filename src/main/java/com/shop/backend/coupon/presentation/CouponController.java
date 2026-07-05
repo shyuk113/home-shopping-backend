@@ -1,6 +1,6 @@
 package com.shop.backend.coupon.presentation;
 
-import com.shop.backend.Member.domain.Member;
+import com.shop.backend.member.domain.Member;
 import com.shop.backend.coupon.application.CouponService;
 import com.shop.backend.coupon.application.dto.request.CouponCreateRequestDto;
 import com.shop.backend.coupon.application.dto.response.CouponResponse;

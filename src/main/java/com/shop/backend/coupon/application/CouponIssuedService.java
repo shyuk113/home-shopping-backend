@@ -1,7 +1,7 @@
 package com.shop.backend.coupon.application;
 
-import com.shop.backend.Member.domain.Member;
-import com.shop.backend.Member.infrastructure.MemberRepository;
+import com.shop.backend.member.domain.Member;
+import com.shop.backend.member.infrastructure.MemberRepository;
 import com.shop.backend.coupon.domain.Coupon;
 import com.shop.backend.coupon.domain.MemberCoupon;
 import com.shop.backend.coupon.infrastructure.CouponRepository;

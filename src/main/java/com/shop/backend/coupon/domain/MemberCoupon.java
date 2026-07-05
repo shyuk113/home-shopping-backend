@@ -1,6 +1,6 @@
 package com.shop.backend.coupon.domain;
 
-import com.shop.backend.Member.domain.Member;
+import com.shop.backend.member.domain.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
