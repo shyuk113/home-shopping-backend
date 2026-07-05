@@ -7,7 +7,7 @@ import com.shop.backend.Member.infrastructure.MemberRepository;
 import com.shop.backend.Order.domain.Order;
 import com.shop.backend.Order.domain.OrderItem;
 import com.shop.backend.Order.domain.OrderStatus;
-import com.shop.backend.Order.infrastrucutre.OrderRepository;
+import com.shop.backend.Order.infrastructure.OrderRepository;
 import com.shop.backend.Order.application.dto.response.OrderResponse;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;

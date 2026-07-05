@@ -3,7 +3,7 @@ package com.shop.backend.coupon.application;
 import com.shop.backend.coupon.domain.Coupon;
 import com.shop.backend.coupon.infrastructure.CouponRepository;
 import com.shop.backend.coupon.infrastructure.MemberCouponRepository;
-import com.shop.backend.coupon.application.dto.reqeust.CouponCreateRequestDto;
+import com.shop.backend.coupon.application.dto.request.CouponCreateRequestDto;
 import com.shop.backend.coupon.application.dto.response.CouponResponse;
 import com.shop.backend.global.exception.CouponOutOfStockException;
 import com.shop.backend.global.exception.DuplicateCouponException;
