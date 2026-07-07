@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class CouponIssuedService {
@@ -27,10 +29,12 @@ public class CouponIssuedService {
             .orElseThrow(()-> new EntityNotFoundException("존재하지 않는 회원입니다."));
 
         memberCouponRepository.save(MemberCoupon.builder()
-            .member(member)
-            .coupon(coupon)
+                .member(member)
+                .coupon(coupon)
+                .isUsed(false)
+                .issuedAt(LocalDateTime.now())
         .build());
 
-        coupon.incrementIssuedQuantity();
+        couponRepository.incrementIssuedQuantity(couponId);
     }
 }
