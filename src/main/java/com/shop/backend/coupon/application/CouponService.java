@@ -41,13 +41,14 @@ public class CouponService {
         return couponRepository.save(coupon).getId();
     }
 
+    @Transactional
     public void issuedCoupon(Long couponId, Long memberId){
         Coupon coupon = couponRepository.findById(couponId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 쿠폰입니다."));
 
         // 쿠폰 발급 기간 체크
         if(!coupon.isIssued()){
-            throw new IllegalStateException("쿠폰 발릅 기간이 아닙니다");
+            throw new IllegalStateException("쿠폰 발급 기간이 아닙니다");
         }
 
         String memberKey = String.format(COUPON_MEMBER_KEY, couponId);
