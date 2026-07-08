@@ -2,6 +2,7 @@ package com.shop.backend.order.application;
 
 import com.shop.backend.Item.domain.Item;
 import com.shop.backend.Item.infrastructure.ItemRepository;
+import com.shop.backend.global.exception.OutOfStockException;
 import com.shop.backend.member.domain.Member;
 import com.shop.backend.member.infrastructure.MemberRepository;
 import com.shop.backend.order.domain.Order;
@@ -26,7 +27,11 @@ public class OrderService {
     @Transactional
     public Long order(Long memberId, Long itemId, int quantity){
         Member member = memberRepository.findById(memberId).orElseThrow(()-> new EntityNotFoundException("Member not found"));
-        Item item = itemRepository.findByIdWithLock(itemId).orElseThrow(()-> new EntityNotFoundException("Item not found"));
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("Item not found"));
+
+        if (item.getQuantity() <= quantity){
+            throw new OutOfStockException("재고가 부족합니다. 현재 남은 재고: " + item.getQuantity());
+        }
 
         OrderItem orderItem = OrderItem.createOrderItem(item, item.getPrice(), quantity);
 
@@ -60,7 +65,11 @@ public class OrderService {
             throw new IllegalStateException("이미 취소된 주문입니다.");
         }
 
+        boolean wasPaid = order.getStatus() == OrderStatus.PAID;
         order.setStatus(OrderStatus.CANCEL);
-        order.getOrderItems().forEach(OrderItem::cancel);
+
+        if(wasPaid) {
+            order.getOrderItems().forEach(OrderItem::cancel);
+        }
     }
 }
