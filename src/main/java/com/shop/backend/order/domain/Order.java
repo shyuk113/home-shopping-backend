@@ -55,22 +55,11 @@ public class Order extends BaseEntity {
     }
 
     public static Order createOrder(Member member, List<OrderItem> orderItems){
-<<<<<<< Updated upstream
-        Order order = new Order();
-        order.member = member;
-        for (OrderItem orderItem : orderItems){
-            order.addOrderItem(orderItem);
-        }
-        order.setStatus(OrderStatus.PENDING);
-        order.setOrderTime(LocalDateTime.now());
-        return order;
-=======
         return Order.builder()
                 .member(member)
                 .orderItems(orderItems)
                 .status(OrderStatus.PENDING)
                 .build();
->>>>>>> Stashed changes
     }
 
     public void addOrderItem(OrderItem orderItem){
