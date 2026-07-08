@@ -1,6 +1,7 @@
 package com.shop.backend.coupon.domain;
 
 
+import com.shop.backend.common.BaseEntity;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -11,7 +12,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor
-public class Coupon {
+public class Coupon extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,13 +28,23 @@ public class Coupon {
     private LocalDateTime endTime; // 쿠폰 사용 가능 종료 시간
 
     @Builder
-    public Coupon(String name, int discountAmount, int totalQuantity, LocalDateTime startTime, LocalDateTime endTime) {
+    private Coupon(String name, int discountAmount, int totalQuantity, LocalDateTime startTime, LocalDateTime endTime) {
         this.name = name;
         this.discountAmount = discountAmount;
         this.totalQuantity = totalQuantity;
         this.issuedQuantity = 0; // 초기 발급 수량은 0
         this.startTime = startTime;
         this.endTime = endTime;
+    }
+
+    public static Coupon createCoupon(String name, int discountAmount, int totalQuantity, LocalDateTime startTime, LocalDateTime endTime) {
+        return Coupon.builder()
+                .name(name)
+                .discountAmount(discountAmount)
+                .totalQuantity(totalQuantity)
+                .startTime(startTime)
+                .endTime(endTime)
+                .build();
     }
 
     public void incrementIssuedQuantity() {

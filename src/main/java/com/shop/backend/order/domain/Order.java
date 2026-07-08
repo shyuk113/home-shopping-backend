@@ -1,5 +1,6 @@
 package com.shop.backend.order.domain;
 
+import com.shop.backend.common.BaseEntity;
 import com.shop.backend.member.domain.Member;
 import com.shop.backend.common.Address;
 import jakarta.persistence.CascadeType;
@@ -18,16 +19,14 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+
+import lombok.*;
 
 @Entity
 @Getter @Setter
 @Table(name = "orders")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Order {
+public class Order extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -48,7 +47,15 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
+    @Builder
+    private Order(Member member, List<OrderItem> orderItems, OrderStatus status) {
+        this.member = member;
+        this.orderItems = orderItems;
+        this.status = status;
+    }
+
     public static Order createOrder(Member member, List<OrderItem> orderItems){
+<<<<<<< Updated upstream
         Order order = new Order();
         order.member = member;
         for (OrderItem orderItem : orderItems){
@@ -57,6 +64,13 @@ public class Order {
         order.setStatus(OrderStatus.PENDING);
         order.setOrderTime(LocalDateTime.now());
         return order;
+=======
+        return Order.builder()
+                .member(member)
+                .orderItems(orderItems)
+                .status(OrderStatus.PENDING)
+                .build();
+>>>>>>> Stashed changes
     }
 
     public void addOrderItem(OrderItem orderItem){
