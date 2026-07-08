@@ -54,7 +54,7 @@ public class Order {
         for (OrderItem orderItem : orderItems){
             order.addOrderItem(orderItem);
         }
-        order.setStatus(OrderStatus.ORDER);
+        order.setStatus(OrderStatus.PENDING);
         order.setOrderTime(LocalDateTime.now());
         return order;
     }
@@ -62,5 +62,20 @@ public class Order {
     public void addOrderItem(OrderItem orderItem){
         orderItems.add(orderItem);
         orderItem.setOrder(this);
+    }
+
+    public void markPaid(){
+        if (this.status != OrderStatus.PENDING){
+            throw new IllegalStateException("결제 대기 상태의 주문만 결제 완료로 전환할 수 있습니다.");
+        }
+        this.status = OrderStatus.PAID;
+    }
+
+    public void markFailed(){
+        this.status = OrderStatus.FAILED;
+    }
+
+    public int getTotalPrice(){
+        return orderItems.stream().mapToInt(OrderItem::getTotalPrice).sum();
     }
 }

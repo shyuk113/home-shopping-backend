@@ -40,8 +40,6 @@ public class OrderItem {
         orderItem.setOrderPrice(orderPrice);
         orderItem.setQuantity(quantity);
 
-        item.removeStock(quantity);
-
         return orderItem;
     }
 
