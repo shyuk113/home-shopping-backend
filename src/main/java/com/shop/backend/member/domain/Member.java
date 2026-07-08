@@ -1,5 +1,6 @@
 package com.shop.backend.member.domain;
 
+import com.shop.backend.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -17,7 +18,7 @@ import lombok.Setter;
 @Entity
 @Getter @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Member {
+public class Member extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -44,13 +45,35 @@ public class Member {
     private String address;
 
     @Builder
-    public Member(String name, String phone, String email,String password, Role role, String address){
+    private Member(String name, String phone, String email,String password, Role role, String address){
         this.name = name;
         this.phone = phone;
         this.email = email;
         this.password = password;
         this.role = role;
         this.address = address;
+    }
+
+    public static Member createMember(String name, String phone, String email,String password, Role role, String address){
+        return Member.builder()
+                .name(name)
+                .phone(phone)
+                .email(email)
+                .password(password)
+                .role(Role.USER)
+                .address(address)
+                .build();
+    }
+
+    public static Member createAdmin(String name, String phone, String email,String password, Role role, String address){
+        return Member.builder()
+                .name(name)
+                .phone(phone)
+                .email(email)
+                .password(password)
+                .role(Role.ADMIN)
+                .address(address)
+                .build();
     }
 
     public void update(String name, String phone,String address){

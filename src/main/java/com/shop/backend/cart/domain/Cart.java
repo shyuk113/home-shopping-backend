@@ -1,5 +1,6 @@
 package com.shop.backend.cart.domain;
 
+import com.shop.backend.common.BaseEntity;
 import com.shop.backend.member.domain.Member;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -20,7 +21,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Cart {
+public class Cart extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

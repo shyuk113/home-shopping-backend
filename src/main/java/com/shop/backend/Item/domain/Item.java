@@ -1,5 +1,6 @@
 package com.shop.backend.Item.domain;
 
+import com.shop.backend.common.BaseEntity;
 import com.shop.backend.global.exception.OutOfStockException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,7 +17,7 @@ import lombok.Setter;
 @Entity
 @Getter @Setter
 @NoArgsConstructor
-public class Item {
+public class Item extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,13 +39,24 @@ public class Item {
     private ItemStatus status;
 
     @Builder
-    public Item(String name, int price, int quantity, String description, String imageUrl, ItemStatus status) {
+    private Item(String name, int price, int quantity, String description, String imageUrl, ItemStatus status) {
         this.name = name;
         this.price = price;
         this.quantity = quantity;
         this.description = description;
         this.imageUrl = imageUrl;
         this.status = status;
+    }
+
+    public static Item createItem(String name, int price, int quantity, String description, String imageUrl, ItemStatus status) {
+        return Item.builder()
+                .name(name)
+                .price(price)
+                .quantity(quantity)
+                .description(description)
+                .imageUrl(imageUrl)
+                .status(status)
+                .build();
     }
 
     public void removeStock(int quantity){
