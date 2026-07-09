@@ -1,0 +1,30 @@
+server:
+  tomcat:
+    threads:
+      max: 1000
+    accept-count: 1000
+    max-connections: 10000
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/shop
+    username: shop
+    password: shop
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 50
+  jpa:
+    hibernate:
+      ddl-auto: create
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: always
+      platform: postgresql
+  data:
+    redis:
+      host: localhost
+      port: 6379
