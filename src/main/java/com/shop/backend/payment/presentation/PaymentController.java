@@ -23,7 +23,7 @@ public class PaymentController {
         return ResponseEntity.ok(PaymentResponse.from(payment));
     }
 
-    @PostMapping("/{paymentKey}/comfirm")// 결제 승인
+    @PostMapping("/{paymentKey}/confirm")// 결제 승인
     public ResponseEntity<PaymentResponse> confirm(@PathVariable String paymentKey,
                                                    @Valid @RequestBody PaymentConfirmRequest request){
         paymentService.confirm(paymentKey, request.amount());
