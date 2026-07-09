@@ -1,6 +1,5 @@
 package com.shop.backend.payment.application;
 
-import com.shop.backend.Item.domain.Item;
 import com.shop.backend.Item.infrastructure.ItemRepository;
 import com.shop.backend.global.exception.OutOfStockException;
 import com.shop.backend.order.domain.Order;
@@ -49,9 +48,14 @@ public class PaymentService {
 
         try{
             for(OrderItem orderItem : order.getOrderItems()){
-                Item item = itemRepository.findByIdWithLock(orderItem.getItem().getId())
-                        .orElseThrow(()-> new EntityNotFoundException("존재 하지 않는 상품입니다."));
-                item.removeStock(orderItem.getQuantity());
+                Long itemId = orderItem.getItem().getId();
+                int updated = itemRepository.decreaseStock(itemId, orderItem.getQuantity());
+                if (updated == 0){
+                    if (!itemRepository.existsById(itemId)){
+                        throw new EntityNotFoundException("존재 하지 않는 상품입니다.");
+                    }
+                    throw new OutOfStockException("재고가 부족합니다.");
+                }
             }
         } catch(OutOfStockException e){
             payment.fail("재고 부족");
