@@ -1,213 +1,169 @@
 # 🛒 Home Shopping Backend
 
-Spring Boot 기반의 홈쇼핑 백엔드 프로젝트입니다.  
-JWT 인증, Redis 캐싱, 선착순 쿠폰 발급 등 실무에서 자주 쓰이는 기능들을 구현했습니다.
+대량 동시 요청(선착순 쿠폰 발급, 한정 수량 주문)에도 안정적으로 동시성을 제어하는 것을 목표로 하는 Spring Boot 기반 이커머스 백엔드입니다.
 
 ---
 
-## 🛠 기술 스택
+## 기술 스택
 
 | 분류 | 기술 |
-|------|------|
+|---|---|
 | Language | Java 21 |
 | Framework | Spring Boot 4.0.2 |
 | Security | Spring Security, JWT (jjwt 0.11.5) |
-| Database | H2 (개발), JPA / Hibernate |
-| Cache | Redis |
+| Database | H2 (개발/테스트, in-memory) — PostgreSQL 드라이버 포함(운영 전환 예정) |
+| ORM | Spring Data JPA / Hibernate |
+| Cache / 동시성 제어 | Redis |
 | Build | Gradle |
 | Etc | Lombok |
 
 ---
 
-## ✨ 주요 기능
+## 주요 기능
 
-- **회원** : 회원가입 / 로그인 (JWT 인증), 회원 정보 조회 및 수정
-- **상품** : 상품 목록 및 상세 조회 / 등록 / 수정 / 삭제 (ADMIN), Redis 캐싱
-- **장바구니** : 상품 추가 / 목록 조회 / 삭제
-- **주문** : 주문 생성 / 목록 조회 / 단건 조회 / 취소 (재고 자동 복구)
-- **쿠폰** : 선착순 쿠폰 발급 (Redis INCR 기반 동시성 처리), 내 쿠폰 목록 조회
-
----
-
-## 📁 패키지 구조
-
-```
-com.shop.backend
-├── Auth
-│   ├── controller
-│   ├── dto
-│   └── service
-├── Cart
-│   ├── application/service
-│   ├── domain
-│   └── presentation
-├── Coupon
-│   ├── application/service
-│   ├── domain
-│   └── presentation
-├── Item
-│   ├── application/service
-│   ├── domain
-│   └── presentation
-├── Member
-│   ├── application/service
-│   ├── domain
-│   └── presentation
-├── Order
-│   ├── application/service
-│   ├── domain
-│   └── presentation
-└── global
-    ├── config
-    ├── exception
-    └── jwt
-```
+- **회원**: 회원가입 / 로그인(JWT) / 회원정보 조회·수정
+- **상품**: 목록/상세 조회, 등록·수정·삭제(ADMIN), Redis 캐싱
+- **장바구니**: 상품 추가 / 조회 / 삭제
+- **주문**: 주문 생성(결제 대기 상태로 생성) / 목록·단건 조회 / 취소
+- **결제**: 결제 요청 생성 → 승인 확정(재고 차감은 이 시점에 발생) → 조회 / 취소
+- **쿠폰**: 선착순 쿠폰 발급(Redis SET + INCR 기반 동시성 제어) / 내 쿠폰 목록 조회
 
 ---
 
-## 📌 API 명세
+## 패키지 구조
 
-### Auth
-| Method | URL | 설명 | 권한 |
-|--------|-----|------|------|
-| POST | /api/auth/signup | 회원가입 | 누구나 |
-| POST | /api/auth/login | 로그인 | 누구나 |
+각 도메인이 `domain / application / infrastructure / presentation` 4계층 구조를 동일하게 반복합니다.
 
-### Member
-| Method | URL | 설명 | 권한 |
-|--------|-----|------|------|
-| GET | /api/members/{id} | 회원 정보 조회 | 회원 |
-| PUT | /api/members/{id} | 회원 정보 수정 | 회원 |
+- `com.shop.backend.auth` — 회원가입/로그인
+- `com.shop.backend.member` — 회원 정보
+- `com.shop.backend.Item` — 상품
+- `com.shop.backend.cart` — 장바구니
+- `com.shop.backend.order` — 주문 (결제 대기/완료/취소/실패 상태 관리)
+- `com.shop.backend.payment` — 결제 (Payment 엔티티, 결제 승인 흐름)
+- `com.shop.backend.coupon` — 선착순 쿠폰
+- `com.shop.backend.config` — Redis 등 공통 설정
+- `com.shop.backend.global` — JWT, 예외 처리, 시큐리티 설정
 
-### Item
+  ---
+
+## 핵심 설계 — 동시성 제어
+
+| 자원 | 방식 | 이유 |
+|---|---|---|
+| 재고(Item) | 비관적 락(`PESSIMISTIC_WRITE`, 3초 타임아웃) | 재고 차감은 트랜잭션 일관성이 중요한 최종 소스오브트루스라 DB에서 처리 |
+| 쿠폰 발급 수량 | Redis `SET`(중복 발급 체크) + `INCR`(수량 체크) | 스파이크성 트래픽을 DB 커넥션 풀 대신 Redis에서 흡수, 실패 시 보상(rollback) 처리 |
+| 쿠폰 발급 통계(`issuedQuantity`) | DB 원자적 `UPDATE` 쿼리 (`SET issuedQuantity = issuedQuantity + 1`) | 엔티티 dirty-checking 방식은 동시 갱신 시 Lost Update 발생 — 원자 연산으로 전환 |
+
+**재고 차감 시점**: 주문 생성 시점이 아니라 **결제 확정(`PaymentService.confirm()`) 시점**에 발생합니다. 주문은 일단 `PENDING` 상태로 생성되고, 결제 승인이 확정될 때 비관적 락을 걸고 실제 재고를 차감합니다.
+
+---
+
+## API 명세
+
+### Auth (`/api/auth`) — 인증 불필요
+| Method | URL | 설명 |
+|---|---|---|
+| POST | /api/auth/signup | 회원가입 |
+| POST | /api/auth/login | 로그인 (JWT 발급) |
+
+### Member (`/api/members`) — 인증 필요
+| Method | URL | 설명 |
+|---|---|---|
+| GET | /api/members/{id} | 회원 정보 조회 |
+| PUT | /api/members/{id} | 회원 정보 수정 |
+
+### Item (`/api/items`)
 | Method | URL | 설명 | 권한 |
-|--------|-----|------|------|
-| GET | /api/items | 상품 목록 조회 | 누구나 |
+|---|---|---|---|
+| GET | /api/items | 전체 상품 조회 | 누구나 |
 | GET | /api/items/{id} | 상품 상세 조회 | 누구나 |
 | POST | /api/items | 상품 등록 | ADMIN |
 | PUT | /api/items/{id} | 상품 수정 | ADMIN |
 | DELETE | /api/items/{id} | 상품 삭제 | ADMIN |
 
-### Cart
-| Method | URL | 설명 | 권한 |
-|--------|-----|------|------|
-| POST | /api/cart | 장바구니 상품 추가 | 회원 |
-| GET | /api/cart | 장바구니 목록 조회 | 회원 |
-| DELETE | /api/cart/{itemId} | 장바구니 상품 삭제 | 회원 |
+### Cart (`/api/cart`) — 인증 필요
+| Method | URL | 설명 |
+|---|---|---|
+| POST | /api/cart | 장바구니 상품 추가 |
+| GET | /api/cart | 장바구니 조회 |
+| DELETE | /api/cart/{itemId} | 장바구니 상품 삭제 |
 
-### Order
-| Method | URL | 설명 | 권한 |
-|--------|-----|------|------|
-| POST | /api/items/orders | 주문 생성 | 회원 |
-| GET | /api/items/orders | 주문 목록 조회 | 회원 |
-| GET | /api/items/orders/{id} | 주문 단건 조회 | 회원 |
-| DELETE | /api/items/orders/{id} | 주문 취소 | 회원 |
+### Order (`/api/orders`)
+| Method | URL | 설명 |
+|---|---|---|
+| POST | /api/orders | 주문 생성 (PENDING 상태) |
+| GET | /api/orders?memberId={id} | 회원 주문 목록 조회 |
+| GET | /api/orders/{id} | 주문 단건 조회 |
+| DELETE | /api/orders/{id} | 주문 취소 (결제완료 건만 재고 복구) |
 
-### Coupon
-| Method | URL | 설명 | 권한 |
-|--------|-----|------|------|
-| POST | /api/coupons | 쿠폰 생성 | ADMIN |
-| POST | /api/coupons/{couponId}/issue | 선착순 쿠폰 발급 | 회원 |
-| GET | /api/coupons/my | 내 쿠폰 목록 조회 | 회원 |
+### Payment (`/api/payments`)
+| Method | URL | 설명 |
+|---|---|---|
+| POST | /api/payments | 결제 요청 생성 |
+| POST | /api/payments/{paymentKey}/confirm | 결제 승인 확정 (재고 차감 발생) |
+| GET | /api/payments/{paymentKey} | 결제 상태 조회 |
+| POST | /api/payments/{paymentKey}/cancel | 결제 취소 |
 
----
-
-## 🗄 ERD
-
-```
-Member ──── Cart ──── CartItem ──── Item
-  │                                  │
-  └──── Order ──── OrderItem ────────┘
-  │
-  └──── MemberCoupon ──── Coupon
-```
+### Coupon (`/api/coupons`)
+| Method | URL | 설명 |
+|---|---|---|
+| POST | /api/coupons | 쿠폰 생성 |
+| POST | /api/coupons/{couponId}/issue | 선착순 쿠폰 발급 |
+| GET | /api/coupons/my | 내 쿠폰 목록 조회 |
 
 ---
 
-## ⚙️ 환경 설정
+## ERD
 
-`src/main/resources/application.yml`
-
-```yaml
-jwt:
-  secret: your-secret-key
-
-spring:
-  datasource:
-    url: jdbc:h2:mem:shop
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-  redis:
-    host: localhost
-    port: 6379
+```mermaid
+erDiagram
+    MEMBER ||--o| CART : "보유"
+    CART ||--o{ CART_ITEM : "담음"
+    CART_ITEM }o--|| ITEM : "참조"
+    MEMBER ||--o{ ORDERS : "주문"
+    ORDERS ||--o{ ORDER_ITEM : "포함"
+    ORDER_ITEM }o--|| ITEM : "참조"
+    ORDERS ||--o{ PAYMENT : "결제 시도"
+    MEMBER ||--o{ MEMBER_COUPON : "발급받음"
+    COUPON ||--o{ MEMBER_COUPON : "발급됨"
 ```
 
 ---
 
-## 🚀 실행 방법
+## 실행 방법
 
 ```bash
-# 1. Redis 실행
-docker run -d -p 6379:6379 redis
+# Redis 실행 (쿠폰/캐시 기능에 필요)
+docker run -p 6379:6379 redis
 
-# 2. 프로젝트 실행
+# 애플리케이션 실행
 ./gradlew bootRun
 ```
 
+`application.yml` 기본 설정: H2 in-memory DB (`ddl-auto: create`), Redis `localhost:6379`.
+
 ---
 
-## 🔥 트러블슈팅 / 기술적 의사결정
+## 테스트
 
-### 1. 재고 차감 동시성 문제 - 비관적 락 선택
-여러 사용자가 동시에 주문할 때 재고가 마이너스가 되는 레이스 컨디션이 발생할 수 있습니다.
+동시성 검증 테스트가 `src/test/java` 에 있습니다.
 
-**낙관적 락 vs 비관적 락**
-- 낙관적 락 : 충돌 시 재시도 로직이 필요하고, 재고 차감처럼 충돌이 잦은 상황에선 재시도가 많이 발생해 오히려 성능이 저하될 수 있습니다.
-- 비관적 락 : DB 레벨에서 `SELECT FOR UPDATE`로 행에 락을 걸어 한 번에 하나의 트랜잭션만 처리합니다. 재고 차감처럼 충돌이 잦고 정확성이 중요한 상황에 적합합니다.
-
-→ `ItemRepository`에 `@Lock(LockModeType.PESSIMISTIC_WRITE)`를 적용하고 3초 타임아웃을 설정했습니다.
-
-```java
-@Lock(LockModeType.PESSIMISTIC_WRITE)
-@QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "3000"))
-@Query("SELECT i FROM Item i WHERE i.id = :id")
-Optional<Item> findByIdWithLock(@Param("id") Long id);
+```bash
+./gradlew test --tests OrderConcurrencyTest
+./gradlew test --tests CouponServiceTest
 ```
 
----
-
-### 2. 선착순 쿠폰 발급 동시성 문제 - Redis INCR 선택
-선착순 쿠폰은 짧은 시간에 트래픽이 폭발적으로 몰리는 특성이 있어 DB 락으로는 병목이 심하게 발생합니다.
-
-**Redis INCR을 선택한 이유**
-- Redis의 `INCR` 명령어는 단일 스레드로 동작해 원자성이 보장됩니다.
-- DB 락과 달리 Redis는 인메모리라 응답 속도가 매우 빠릅니다.
-- `SADD`로 중복 발급 체크와 등록을 원자적으로 처리할 수 있습니다.
-
-```
-1. SADD coupon:{id}:members {memberId} → 0이면 중복 발급
-2. INCR coupon:{id}:count → totalQuantity 초과 시 Redis 롤백
-3. DB에 MemberCoupon 저장
-```
+`CouponServiceTest`는 로컬 Redis가 떠 있어야 통과합니다.
 
 ---
 
-### 3. @Transactional + Redis 혼용 문제
-`@Transactional` 메서드 안에서 Redis 작업과 DB 작업을 함께 처리하면 DB 트랜잭션 롤백 시 Redis는 롤백되지 않아 수량 불일치가 발생합니다.
+## 알려진 이슈 / TODO
 
-**해결 방법**
-- `issueCoupon()`에서 `@Transactional`을 제거해 Redis 작업과 DB 작업을 분리했습니다.
-- DB 저장 로직을 `CouponIssueService`로 별도 분리해 `@Transactional`이 정상 동작하도록 했습니다.
-- DB 저장 실패 시 `catch` 블록에서 Redis를 수동으로 롤백합니다.
-
-> 같은 클래스 내에서 `@Transactional` 메서드를 호출하면 Spring 프록시를 거치지 않아 트랜잭션이 적용되지 않는 문제도 클래스 분리로 함께 해결했습니다.
-
----
-
-### 4. Redis 캐싱으로 상품 조회 성능 개선
-상품 목록/상세 조회는 읽기 요청이 많고 자주 바뀌지 않아 캐싱 효과가 큽니다.
-
-- `@Cacheable`로 조회 시 캐시 우선 반환
-- 상품 수정/삭제/재고 변경 시 `@CacheEvict`로 캐시 무효화
-- TTL 10분 설정으로 오래된 캐시 자동 제거
+- [ ] `OrderConcurrencyTest`가 결제 확정 시점으로 재고 차감 로직이 이동한 이후 더 이상 실제 동작을 검증하지 못함 — `PaymentService.confirm()` 기준으로 재작성 필요 (최우선)
+- [ ] `PaymentController`의 `/{paymentKey}/comfirm` 경로 오타 (`confirm`으로 수정 필요)
+- [ ] `OrderService.order()`의 재고 체크가 `<=`로 되어 있어 재고와 요청 수량이 정확히 같을 때 잘못 거부되는 off-by-one 버그
+- [ ] `POST /api/coupons`(쿠폰 생성)에 ADMIN 권한 체크 없음
+- [ ] `SecurityConfig`에 `/api/payments/**` 명시적 인증 규칙 없음 (현재는 catch-all로만 걸림)
+- [ ] 실제 PG(결제대행사) 연동 없음 — 현재 `confirm()`은 클라이언트가 보낸 금액만 검증, 서버-to-서버 승인 검증 없음
+- [ ] 재고 부족으로 결제 실패 시 PG 환불 처리 미구현
+- [ ] Redis `SET add` + `INCR`이 별도 명령이라 완전한 원자성은 없음 (Lua 스크립트로 개선 가능, 낮은 우선순위)
