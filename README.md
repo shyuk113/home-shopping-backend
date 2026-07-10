@@ -10,10 +10,10 @@
 |---|---|
 | Language | Java 21 |
 | Framework | Spring Boot 4.0.2 |
-| Security | Spring Security, JWT (jjwt 0.11.5) |
-| Database | H2 (개발/테스트, in-memory) — PostgreSQL 드라이버 포함(운영 전환 예정) |
+| Security | Spring Security, JWT (jjwt 0.11.5, HS256) |
+| Database | H2 (개발/테스트, in-memory, `ddl-auto: create`) — PostgreSQL 드라이버는 포함돼 있으나 아직 설정 연결은 안 됨 |
 | ORM | Spring Data JPA / Hibernate |
-| Cache / 동시성 제어 | Redis |
+| Cache / 동시성 제어 | Redis (Spring Cache 추상화 + 쿠폰 발급 카운터) |
 | Build | Gradle |
 | Etc | Lombok |
 
@@ -21,12 +21,12 @@
 
 ## 주요 기능
 
-- **회원**: 회원가입 / 로그인(JWT) / 회원정보 조회·수정
-- **상품**: 목록/상세 조회, 등록·수정·삭제(ADMIN), Redis 캐싱
-- **장바구니**: 상품 추가 / 조회 / 삭제
-- **주문**: 주문 생성(결제 대기 상태로 생성) / 목록·단건 조회 / 취소
-- **결제**: 결제 요청 생성 → 승인 확정(재고 차감은 이 시점에 발생) → 조회 / 취소
-- **쿠폰**: 선착순 쿠폰 발급(Redis SET + INCR 기반 동시성 제어) / 내 쿠폰 목록 조회
+- **회원**: 이메일/비밀번호 회원가입(BCrypt 암호화, 이메일 중복 체크) / 로그인(JWT 발급) / 회원정보 조회·수정
+- **상품**: 목록/상세 조회(Redis 캐싱, `@Cacheable`), 등록·수정·삭제(ADMIN), 수정/삭제 시 캐시 무효화
+- **장바구니**: 상품 추가(이미 담긴 상품이면 수량 합산) / 조회 / 삭제
+- **주문**: 주문 생성(`PENDING` 상태로 생성, 재고는 아직 안 건드림) / 목록·단건 조회 / 취소
+- **결제**: 결제 요청 생성 → 승인 확정(이 시점에 실제 재고 차감) → 조회 / 취소
+- **쿠폰**: 선착순 쿠폰 발급(Redis SET + INCR 기반 동시성 제어, 실패 시 보상 처리) / 내 쿠폰 목록 조회
 
 ---
 
@@ -44,17 +44,17 @@
 - `com.shop.backend.config` — Redis 등 공통 설정
 - `com.shop.backend.global` — JWT, 예외 처리, 시큐리티 설정
 
-  ---
+---
 
 ## 핵심 설계 — 동시성 제어
 
 | 자원 | 방식 | 이유 |
 |---|---|---|
-| 재고(Item) | 비관적 락(`PESSIMISTIC_WRITE`, 3초 타임아웃) | 재고 차감은 트랜잭션 일관성이 중요한 최종 소스오브트루스라 DB에서 처리 |
-| 쿠폰 발급 수량 | Redis `SET`(중복 발급 체크) + `INCR`(수량 체크) | 스파이크성 트래픽을 DB 커넥션 풀 대신 Redis에서 흡수, 실패 시 보상(rollback) 처리 |
-| 쿠폰 발급 통계(`issuedQuantity`) | DB 원자적 `UPDATE` 쿼리 (`SET issuedQuantity = issuedQuantity + 1`) | 엔티티 dirty-checking 방식은 동시 갱신 시 Lost Update 발생 — 원자 연산으로 전환 |
+| 재고(Item, 결제 확정 시) | 조건부 원자적 UPDATE — `SET quantity = quantity - :qty WHERE id = :id AND quantity >= :qty` | 락을 잡고 대기시키는 대신, 재고 체크와 차감을 DB가 하나의 원자 연산으로 처리. 영향받은 row 수(0/1)로 성공 여부 판단 |
+| 쿠폰 발급 수량 | Redis `SET`(회원별 중복 발급 체크) + `INCR`(전체 발급 수량 체크) | 스파이크성 트래픽을 DB 커넥션 풀 대신 Redis에서 흡수. 실패 시 SET 제거 + 카운트 감소로 보상 처리 |
+| 쿠폰 발급 통계(`issuedQuantity`) | DB 원자적 `UPDATE` 쿼리 (`SET issuedQuantity = issuedQuantity + 1`) | 엔티티 dirty-checking 방식은 동시 갱신 시 Lost Update 발생 위험 — 원자 연산으로 전환해 해결 |
 
-**재고 차감 시점**: 주문 생성 시점이 아니라 **결제 확정(`PaymentService.confirm()`) 시점**에 발생합니다. 주문은 일단 `PENDING` 상태로 생성되고, 결제 승인이 확정될 때 비관적 락을 걸고 실제 재고를 차감합니다.
+**재고 차감 시점**: 주문 생성이 아니라 **결제 확정(`PaymentService.confirm()`) 시점**에 발생합니다. `OrderService.order()`는 주문을 `PENDING` 상태로 만들 뿐 재고를 잠그거나 차감하지 않고, `item.getQuantity() < quantity` 형태의 소프트 체크만 합니다.
 
 ---
 
@@ -76,7 +76,7 @@
 | Method | URL | 설명 | 권한 |
 |---|---|---|---|
 | GET | /api/items | 전체 상품 조회 | 누구나 |
-| GET | /api/items/{id} | 상품 상세 조회 | 누구나 |
+| GET | /api/items/{id} | 상품 상세 조회 (재고 수량 미포함) | 누구나 |
 | POST | /api/items | 상품 등록 | ADMIN |
 | PUT | /api/items/{id} | 상품 수정 | ADMIN |
 | DELETE | /api/items/{id} | 상품 삭제 | ADMIN |
@@ -100,7 +100,7 @@
 | Method | URL | 설명 |
 |---|---|---|
 | POST | /api/payments | 결제 요청 생성 |
-| POST | /api/payments/{paymentKey}/confirm | 결제 승인 확정 (재고 차감 발생) |
+| POST | /api/payments/{paymentKey}/confirm | 결제 승인 확정 (실제 재고 차감 발생) |
 | GET | /api/payments/{paymentKey} | 결제 상태 조회 |
 | POST | /api/payments/{paymentKey}/cancel | 결제 취소 |
 
@@ -140,13 +140,9 @@ docker run -p 6379:6379 redis
 ./gradlew bootRun
 ```
 
-`application.yml` 기본 설정: H2 in-memory DB (`ddl-auto: create`), Redis `localhost:6379`.
-
 ---
 
 ## 테스트
-
-동시성 검증 테스트가 `src/test/java` 에 있습니다.
 
 ```bash
 ./gradlew test --tests OrderConcurrencyTest
@@ -159,11 +155,13 @@ docker run -p 6379:6379 redis
 
 ## 알려진 이슈 / TODO
 
-- [ ] `OrderConcurrencyTest`가 결제 확정 시점으로 재고 차감 로직이 이동한 이후 더 이상 실제 동작을 검증하지 못함 — `PaymentService.confirm()` 기준으로 재작성 필요 (최우선)
+- [ ] `OrderConcurrencyTest`가 결제 확정 시점으로 재고 차감이 옮겨진 이후 더 이상 실제 동작을 검증하지 못함 — `PaymentService.confirm()` 기준 `PaymentConcurrencyTest`로 재작성 필요 (최우선)
+- [ ] `OrderService.order()`의 재고 체크가 `<=`로 되어 있어, 재고와 요청 수량이 정확히 같을 때 잘못 거부되는 off-by-one 버그
 - [ ] `PaymentController`의 `/{paymentKey}/comfirm` 경로 오타 (`confirm`으로 수정 필요)
-- [ ] `OrderService.order()`의 재고 체크가 `<=`로 되어 있어 재고와 요청 수량이 정확히 같을 때 잘못 거부되는 off-by-one 버그
 - [ ] `POST /api/coupons`(쿠폰 생성)에 ADMIN 권한 체크 없음
-- [ ] `SecurityConfig`에 `/api/payments/**` 명시적 인증 규칙 없음 (현재는 catch-all로만 걸림)
-- [ ] 실제 PG(결제대행사) 연동 없음 — 현재 `confirm()`은 클라이언트가 보낸 금액만 검증, 서버-to-서버 승인 검증 없음
+- [ ] `SecurityConfig`에 남아있는 `/api/items/orders/**` 규칙은 실제 매핑(`/api/orders`)과 어긋난 죽은 규칙, `/api/payments/**`에는 명시적 규칙 자체가 없음
+- [ ] `GET /api/items/{id}` 응답에 재고 수량이 빠져 있음 (`ItemDetailDto`에 quantity 필드 없음) — 재고 포함된 `ItemResponseDto`/`getItemDetail()`은 정의만 되고 미사용
+- [ ] `ItemService.reduceStock()` 미사용 — 재고 차감 로직이 `ItemRepository.decreaseStock()`으로 이전되며 남은 죽은 코드
+- [ ] 실제 PG(결제대행사) 연동 없음 — `confirm()`은 클라이언트가 보낸 금액만 검증, PG 서버-to-서버 승인 검증 없음
 - [ ] 재고 부족으로 결제 실패 시 PG 환불 처리 미구현
 - [ ] Redis `SET add` + `INCR`이 별도 명령이라 완전한 원자성은 없음 (Lua 스크립트로 개선 가능, 낮은 우선순위)
