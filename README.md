@@ -153,15 +153,4 @@ docker run -p 6379:6379 redis
 
 ---
 
-## 알려진 이슈 / TODO
 
-- [ ] `OrderConcurrencyTest`가 결제 확정 시점으로 재고 차감이 옮겨진 이후 더 이상 실제 동작을 검증하지 못함 — `PaymentService.confirm()` 기준 `PaymentConcurrencyTest`로 재작성 필요 (최우선)
-- [ ] `OrderService.order()`의 재고 체크가 `<=`로 되어 있어, 재고와 요청 수량이 정확히 같을 때 잘못 거부되는 off-by-one 버그
-- [ ] `PaymentController`의 `/{paymentKey}/comfirm` 경로 오타 (`confirm`으로 수정 필요)
-- [ ] `POST /api/coupons`(쿠폰 생성)에 ADMIN 권한 체크 없음
-- [ ] `SecurityConfig`에 남아있는 `/api/items/orders/**` 규칙은 실제 매핑(`/api/orders`)과 어긋난 죽은 규칙, `/api/payments/**`에는 명시적 규칙 자체가 없음
-- [ ] `GET /api/items/{id}` 응답에 재고 수량이 빠져 있음 (`ItemDetailDto`에 quantity 필드 없음) — 재고 포함된 `ItemResponseDto`/`getItemDetail()`은 정의만 되고 미사용
-- [ ] `ItemService.reduceStock()` 미사용 — 재고 차감 로직이 `ItemRepository.decreaseStock()`으로 이전되며 남은 죽은 코드
-- [ ] 실제 PG(결제대행사) 연동 없음 — `confirm()`은 클라이언트가 보낸 금액만 검증, PG 서버-to-서버 승인 검증 없음
-- [ ] 재고 부족으로 결제 실패 시 PG 환불 처리 미구현
-- [ ] Redis `SET add` + `INCR`이 별도 명령이라 완전한 원자성은 없음 (Lua 스크립트로 개선 가능, 낮은 우선순위)
