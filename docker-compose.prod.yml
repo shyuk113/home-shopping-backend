@@ -1,0 +1,41 @@
+services:
+  app:
+    build: .
+    container_name: shop-backend-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: shop
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: 3600000
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16
+    container_name: shop-backend-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - shop-postgres-data:/var/lib/postgresql/data
+    # 운영에서는 DB 포트를 외부에 열 필요가 없으면 ports 섹션 자체를 삭제해도 됨
+
+  redis:
+    image: redis:7
+    container_name: shop-backend-redis
+    restart: unless-stopped
+
+volumes:
+  shop-postgres-data:
