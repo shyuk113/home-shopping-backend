@@ -1,0 +1,39 @@
+server:
+  tomcat:
+    threads:
+      max: 500
+    accept-count: 500
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:shop}
+    username: ${DB_USERNAME:shop}
+    password: ${DB_PASSWORD:shop}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 30
+  jpa:
+    hibernate:
+      # local/loadtest 는 매번 스키마를 새로 만들지만(create), 운영에서는 절대 금지
+      # (재시작할 때마다 테이블이 DROP 됨). 최초 배포 후 스키마가 안정되면 validate 로 전환 권장.
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      # data-postgresql.sql 은 부하테스트용 시드 데이터라 운영에서는 절대 실행하면 안 됨
+      mode: never
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+
+jwt:
+  # 운영 secret은 절대 코드/설정파일에 커밋하지 말고 반드시 환경변수로 주입
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:3600000}
+
+logging:
+  level:
+    root: INFO
