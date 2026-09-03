@@ -2,6 +2,9 @@ package com.shop.backend.Item.infrastructure;
 
 
 import com.shop.backend.Item.domain.Item;
+import com.shop.backend.Item.domain.ItemCategory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,4 +21,6 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
             + "i.status = CASE WHEN (i.quantity - :quantity) = 0 THEN com.shop.backend.Item.domain.ItemStatus.SOLD_OUT ELSE i.status END "
             + "WHERE i.id = :id AND i.quantity >= :quantity")
     int decreaseStock(@Param("id") Long id, @Param("quantity") int quantity);
+
+    Page<Item> findByCategory(Pageable pageable, ItemCategory category);
 }

@@ -9,14 +9,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 @Entity
-@Getter @Setter
-@NoArgsConstructor
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Item extends BaseEntity {
 
     @Id
@@ -38,17 +35,21 @@ public class Item extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private ItemStatus status;
 
+    @Enumerated(EnumType.STRING)
+    private ItemCategory category;
+
     @Builder
-    private Item(String name, int price, int quantity, String description, String imageUrl, ItemStatus status) {
+    private Item(String name, int price, int quantity, String description, String imageUrl, ItemStatus status, ItemCategory category) {
         this.name = name;
         this.price = price;
         this.quantity = quantity;
         this.description = description;
         this.imageUrl = imageUrl;
         this.status = status;
+        this.category = category;
     }
 
-    public static Item createItem(String name, int price, int quantity, String description, String imageUrl, ItemStatus status) {
+    public static Item createItem(String name, int price, int quantity, String description, String imageUrl, ItemStatus status, ItemCategory category) {
         return Item.builder()
                 .name(name)
                 .price(price)
@@ -56,6 +57,7 @@ public class Item extends BaseEntity {
                 .description(description)
                 .imageUrl(imageUrl)
                 .status(status)
+                .category(category)
                 .build();
     }
 
@@ -74,12 +76,13 @@ public class Item extends BaseEntity {
         this.quantity += quantity;
     }
 
-    public void update(String name, int price, int quantity){
+    public void update(String name, int price, int quantity,  String description, String imageUrl,  ItemStatus status, ItemCategory category) {
         this.name = name;
         this.price = price;
         this.quantity = quantity;
-        this.status = quantity > 0 ? ItemStatus.SELLING : ItemStatus.SOLD_OUT;
+        this.description = description;
+        this.imageUrl = imageUrl;
+        this.status = status;
+        this.category=category;
     }
-
-
 }
