@@ -2,9 +2,12 @@ package com.shop.backend.payment.application;
 
 import com.shop.backend.Item.infrastructure.ItemRepository;
 import com.shop.backend.global.exception.OutOfStockException;
+import com.shop.backend.global.exception.UnauthorizedException;
 import com.shop.backend.order.domain.Order;
 import com.shop.backend.order.domain.OrderItem;
+import com.shop.backend.order.domain.OrderStatus;
 import com.shop.backend.order.infrastructure.OrderRepository;
+import com.shop.backend.payment.application.dto.PaymentResponse;
 import com.shop.backend.payment.domain.Payment;
 import com.shop.backend.payment.domain.PaymentMethod;
 import com.shop.backend.payment.domain.PaymentStatus;
@@ -26,21 +29,38 @@ public class PaymentService {
     private final OrderRepository orderRepository;
 
     @Transactional
-    public Payment ready(Long orderId, PaymentMethod method, String pgProvider){
+    public PaymentResponse ready(Long orderId, PaymentMethod method, String pgProvider, Long userId){
         Order order = orderRepository.findById(orderId).orElseThrow(()->new EntityNotFoundException("존재 하지 않는 주문 입니다."));
-
+        if(!order.getMember().getId().equals(userId)){
+            throw new UnauthorizedException("본인의 주문만 결제할 수 있습니다.");
+        }
+        if(order.getStatus() != OrderStatus.PENDING){   // 주문 상태를 체크하여 중복 방지
+            throw new IllegalStateException("이미 결제가 진행 중이거나 완료된 주문입니다.");
+        }
+        if(paymentRepository.existsByOrder_IdAndStatus(orderId, PaymentStatus.READY)){ // 결제 상태를 체크하여 중복 방지
+            throw new IllegalStateException("이미 진행 중인 결제가 있습니다.");
+        }
         String paymentKey = UUID.randomUUID().toString();
         Payment payment = Payment.createPayment(order, paymentKey, method, order.getTotalPrice(),pgProvider, PaymentStatus.READY);
-        return paymentRepository.save(payment);
+        paymentRepository.save(payment);
+        return  PaymentResponse.from(payment);
     }
 
     @Transactional
-    public void confirm(String paymentKey, int approvedAmount){
+    public void confirm(String paymentKey, int approvedAmount, Long userId){
         Payment payment = paymentRepository.findByPaymentKey(paymentKey)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제 입니다."));
-        Order order = payment.getOrder();
 
-        if (order.getTotalPrice() != approvedAmount){
+        Order order = payment.getOrder();
+        if(!order.getMember().getId().equals(userId)){
+            throw new UnauthorizedException("본인의 주문만 결제할 수 있습니다.");
+        }
+
+        if(payment.getStatus() == PaymentStatus.DONE){  //권한 체크 후 멱등성 체크
+            return;
+        }
+
+        if (payment.getAmount() != approvedAmount){
             payment.fail("결제 금액 불일치");
             order.markFailed();
             throw new IllegalStateException("결제 금액이 주문 금액과 일치 하지 않습니다.");
@@ -69,14 +89,21 @@ public class PaymentService {
     }
 
     @Transactional
-    public void cancel(String paymentKey){
+    public void cancel(String paymentKey, Long userId){
         Payment payment = paymentRepository.findByPaymentKey(paymentKey).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 결제 입니다."));
+        if(!payment.getOrder().getMember().getId().equals(userId)){
+            throw new UnauthorizedException("본인의 주문만 결제할 수 있습니다.");
+        }
         payment.cancel();
     }
 
     @Transactional(readOnly = true)
-    public Payment getPayment(String paymentKey){
-        return paymentRepository.findByPaymentKey(paymentKey)
+    public PaymentResponse getPayment(String paymentKey, Long userId){
+        Payment payment = paymentRepository.findByPaymentKey(paymentKey)
                 .orElseThrow(()-> new EntityNotFoundException("존재 하지 않는 결제 입니다"));
+        if(!payment.getOrder().getMember().getId().equals(userId)){
+            throw new UnauthorizedException("본인의 주문만 결제할 수 있습니다.");
+        }
+        return PaymentResponse.from(payment);
     }
 }
