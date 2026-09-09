@@ -27,6 +27,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final ItemRepository itemRepository;
     private final OrderRepository orderRepository;
+    private final PaymentFailureMonitor paymentFailureMonitor;
 
     @Transactional
     public PaymentResponse ready(Long orderId, PaymentMethod method, String pgProvider, Long userId){
@@ -63,6 +64,7 @@ public class PaymentService {
         if (payment.getAmount() != approvedAmount){
             payment.fail("결제 금액 불일치");
             order.markFailed();
+            paymentFailureMonitor.recordFailure("결제 금액 불일치");
             throw new IllegalStateException("결제 금액이 주문 금액과 일치 하지 않습니다.");
         }
 
@@ -80,6 +82,7 @@ public class PaymentService {
         } catch(OutOfStockException e){
             payment.fail("재고 부족");
             order.markFailed();
+            paymentFailureMonitor.recordFailure("재고 부족");
             // TODO: 이 시점엔 PG 승인이 이미 났으므로, PG 취소(환불) API 호출이 반드시 필요함
             throw e;
         }

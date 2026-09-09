@@ -15,5 +15,10 @@ spring:
 
 # spring과 같은 레벨에 배치 (들여쓰기 주의!)
 jwt:
-  secret: v9y$B&E)H@McQfTjWnZr4u7x!A%C*F-JaNdRgUkXp2s5v8y/B?E(G+KbPeShVmYp # 실제로는 아주 길고 복잡한 문자열 추천
-  expiration: 3600000 # 1시간 (밀리초 단위)
+  secret: ${JWT_SECRET} # 실제로는 아주 길고 복잡한 문자열 추천
+  expiration: ${JWT_EXPIRATION:3600000} # 1시간 (밀리초 단위)
+payment:
+  failure-alert:
+    threshold: 5
+    window-seconds: 60
+    cooldown-seconds: 300
