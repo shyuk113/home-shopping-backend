@@ -32,7 +32,7 @@ public class ItemController {
 
     @GetMapping //모든 아이템 조회, 추후 페이징 처리 필요
     public ResponseEntity<List<ItemResponseDto>> getAllItems(){
-        return ResponseEntity.ok(itemService.findAllItemDetail());
+        return ResponseEntity.ok(itemService.getAllItemDetail());
     }
 
     @PostMapping //아이템 등록

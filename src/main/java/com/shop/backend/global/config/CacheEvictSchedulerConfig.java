@@ -1,4 +1,4 @@
-package com.shop.backend.config;
+package com.shop.backend.global.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
