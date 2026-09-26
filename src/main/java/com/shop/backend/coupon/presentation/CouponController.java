@@ -30,10 +30,10 @@ public class CouponController {
         return ResponseEntity.ok(couponService.createCoupon(request));
     }
 
-    @PostMapping("/{couponId}/issue") //쿠폰 발급
-    public ResponseEntity<?> issueCoupon(@PathVariable Long couponId, @AuthenticationPrincipal Member member){
-        couponService.issuedCoupon(couponId, member.getId());
-        return ResponseEntity.ok().build();
+    @PostMapping("/{couponId}/issue")
+    public ResponseEntity<Void> issueCoupon(@PathVariable Long couponId, @AuthenticationPrincipal Member member){
+        couponService.issueCoupon(couponId, member.getId());
+        return ResponseEntity.accepted().build();   // 선착순 당첨은 확정, DB 반영은 곧 완료됨
     }
 
     @GetMapping("/my") //내 쿠폰 조회
