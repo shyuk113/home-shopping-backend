@@ -16,6 +16,11 @@ services:
     container_name: shop-loadtest-redis
     ports:
       - "6379:6379"
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: shop-loadtest-kafka
+    ports:
+      - "9092:9092"
 
 volumes:
   shop-loadtest-postgres-data:

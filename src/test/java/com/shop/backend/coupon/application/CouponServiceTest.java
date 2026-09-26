@@ -65,7 +65,7 @@ class CouponServiceTest {
                 readyLatch.countDown();
                 try {
                     startLatch.await(); // 모든 스레드가 동시에 출발하도록 대기
-                    couponService.issuedCoupon(coupon.getId(), memberId);
+                    couponService.issueCoupon(coupon.getId(), memberId);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();

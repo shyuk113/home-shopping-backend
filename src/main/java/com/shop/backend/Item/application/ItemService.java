@@ -11,9 +11,12 @@ import com.shop.backend.member.domain.Member;
 import com.shop.backend.member.infrastructure.MemberRepository;
 
 import jakarta.persistence.EntityNotFoundException;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,10 +56,10 @@ public class ItemService {
     //상품 목록 조회
     @Cacheable(value = "itemList")
     @Transactional(readOnly = true)
-    public List<ItemResponseDto> findAllItemDetail(){
+    public List<ItemResponseDto> getAllItemDetail(){
         return itemRepository.findAll().stream()
             .map(ItemResponseDto::from)
-            .toList();
+            .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Transactional(readOnly = true)

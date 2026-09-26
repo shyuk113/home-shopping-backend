@@ -11,7 +11,7 @@ SELECT '부하테스트유저' || gs,
        '서울시 테스트구 테스트로 1',
        now(),
        now()
-FROM generate_series(1, 20) AS gs;
+FROM generate_series(1, 1000) AS gs;
 
 -- 2) 재고가 넉넉한 상품 1개 (id 1) - 모든 주문이 이 상품을 참조하게 해서
 --    confirm() 의 재고 차감 비관적 락(findByIdWithLock) 경합을 관찰할 수 있게 함
