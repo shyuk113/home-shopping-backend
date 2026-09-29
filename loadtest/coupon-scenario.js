@@ -13,8 +13,12 @@ const soldOut = new Counter('coupon_sold_out');      // 409 수량 소진
 const duplicated = new Counter('coupon_duplicated'); // 400 중복 발급
 const unexpected = new Counter('coupon_unexpected'); // 그 외 (연결 거부 등)
 
+const STRATEGY = __ENV.STRATEGY || 'redis';   // redis | pessimistic | atomic
+const ISSUE_PATH = { redis: 'issue', pessimistic: 'issue/pessimistic', atomic: 'issue/atomic' }[STRATEGY];
+
 export const options = {
     setupTimeout: '5m', // 로그인 1000번 (bcrypt라 시간이 걸림)
+    summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
     scenarios: {
         burst_1000: {
             executor: 'per-vu-iterations',
@@ -25,6 +29,8 @@ export const options = {
     },
     thresholds: {
         coupon_issued: [`count==${COUPON_QUANTITY}`],
+        // 태그별 응답시간은 threshold에 적어야 요약에 따로 출력됨 (항상 통과하는 조건)
+        'http_req_duration{name:issue}': ['max>=0'],
     },
 };
 
@@ -64,11 +70,16 @@ export function setup() {
 
 export default function (data) {
     const token = data.tokens[exec.vu.idInTest - 1]; // VU마다 서로 다른 유저
-    const res = http.post(`${BASE_URL}/api/coupons/${data.couponId}/issue`, null,
-        { headers: { Authorization: `Bearer ${token}` } });
+    const res = http.post(`${BASE_URL}/api/coupons/${data.couponId}/${ISSUE_PATH}`, null,
+        { headers: { Authorization: `Bearer ${token}` },
+            tags: { name: 'issue' },
+        });
 
-    if (res.status === 202) issued.add(1);
+    if (res.status === 200 || res.status === 202) issued.add(1);   // DB 방식은 200, Redis 방식은 202
     else if (res.status === 409) soldOut.add(1);
     else if (res.status === 400) duplicated.add(1);
-    else unexpected.add(1);
+    else {
+        unexpected.add(1);
+        console.log(`unexpected status=${res.status} error=${res.error}`);   // 지난번 23건처럼 원인을 바로 보이게
+    }
 }
