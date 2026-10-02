@@ -8,7 +8,7 @@ public enum CouponIssueResult {
     SOLD_OUT(0),
     DUPLICATE(-1),
     NOT_IN_PERIOD(-2),
-    NOT_FOUND(-2);
+    NOT_FOUND(-3);
 
     private final long code;
     CouponIssueResult(long code){
