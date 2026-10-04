@@ -11,7 +11,9 @@ spring:
     password: ${DB_PASSWORD:shop}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 30
+      # t3.small(vCPU 2) 한 대에서 앱과 PostgreSQL을 같이 돌리므로 (코어 수 × 2) + 디스크 수 기준으로 작게 유지.
+      # 연결을 늘려도 처리량은 늘지 않고 DB 메모리만 더 쓰므로, 연결 대기 지표를 보고 필요할 때만 조정할 것
+      maximum-pool-size: 10
   jpa:
     hibernate:
       # local/loadtest 는 매번 스키마를 새로 만들지만(create), 운영에서는 절대 금지
