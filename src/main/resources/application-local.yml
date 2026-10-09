@@ -7,7 +7,7 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5433/shop
+    url: jdbc:postgresql://localhost:5433/shop?reWriteBatchedInserts=true
     username: shop
     password: shop
     driver-class-name: org.postgresql.Driver
