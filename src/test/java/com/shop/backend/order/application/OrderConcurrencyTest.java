@@ -11,6 +11,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.shop.backend.seller.domain.Seller;
+import com.shop.backend.seller.infrastructure.SellerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,10 +33,15 @@ class OrderConcurrencyTest {
     private MemberRepository memberRepository;
 
     private Long itemId;
+    @Autowired
+    private SellerRepository sellerRepository;
 
     @BeforeEach
     void setUp() {
+        Seller seller = sellerRepository.save(Seller.createSeller("테스트"));
+
         Item item = Item.builder()
+            .seller(seller)
             .name("한정판 상품")
             .price(10_000)
             .quantity(STOCK)

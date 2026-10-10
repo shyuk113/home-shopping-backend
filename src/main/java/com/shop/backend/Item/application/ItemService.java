@@ -10,6 +10,8 @@ import com.shop.backend.global.exception.UnauthorizedException;
 import com.shop.backend.member.domain.Member;
 import com.shop.backend.member.infrastructure.MemberRepository;
 
+import com.shop.backend.seller.domain.Seller;
+import com.shop.backend.seller.infrastructure.SellerRepository;
 import jakarta.persistence.EntityNotFoundException;
 
 import java.util.ArrayList;
@@ -42,6 +44,7 @@ public class ItemService {
     private final MemberRepository memberRepository;
     private final ScheduledExecutorService cacheEvictScheduler;
     private final CacheManager cacheManager;
+    private final SellerRepository sellerRepository;
 
     //상품 상세 조회(재고 표시)
     @Cacheable(value = "item", key = "#p0")
@@ -75,7 +78,8 @@ public class ItemService {
         if(member.getRole() != Member.Role.ADMIN){
             throw new UnauthorizedException("상품 등록은 관리자만 할 수 있습니다.");
         }
-        Item item = Item.createItem(request.name(), request.price(), request.quantity(), request.description(), request.imageUrl(), request.status(), request.category());
+        Seller seller = sellerRepository.findById(request.sellerId()).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 판매자 입니다."));
+        Item item = Item.createItem(seller, request.name(), request.price(), request.quantity(), request.description(), request.imageUrl(), request.status(), request.category());
         itemRepository.save(item);
         return  ItemResponseDto.from(item);
     }

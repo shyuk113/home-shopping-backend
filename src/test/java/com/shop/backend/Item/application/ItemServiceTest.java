@@ -9,6 +9,8 @@ import com.shop.backend.Item.infrastructure.ItemRepository;
 
 import com.shop.backend.member.domain.Member;
 import com.shop.backend.member.infrastructure.MemberRepository;
+import com.shop.backend.seller.domain.Seller;
+import com.shop.backend.seller.infrastructure.SellerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +47,8 @@ class ItemServiceTest {
     private CacheManager cacheManager;
     @Autowired
     private MemberRepository memberRepository;
+    @Autowired
+    private SellerRepository sellerRepository;
 
     @BeforeEach
     void clearCache() {
@@ -56,7 +60,8 @@ class ItemServiceTest {
     @Test
     void updateItemWithCachePutRaceCondition() throws InterruptedException {
 
-        Item item =Item.createItem("신발1", 10000, 5, "설명", "url", ItemStatus.SELLING, ItemCategory.SHOES);
+        Seller seller = sellerRepository.save(Seller.createSeller("테스트"));
+        Item item =Item.createItem(seller ,"신발1", 10000, 5, "설명", "url", ItemStatus.SELLING, ItemCategory.SHOES);
 
         Long itemId = itemRepository.save(item).getId();
 
@@ -79,7 +84,8 @@ class ItemServiceTest {
 
     @Test
     void delayedDoubleDeleteRemovesStaleValue() throws InterruptedException {
-        Item item =Item.createItem("신발1", 10000, 5, "설명", "url", ItemStatus.SELLING, ItemCategory.SHOES);
+        Seller seller = sellerRepository.save(Seller.createSeller("테스트"));
+        Item item =Item.createItem(seller,"신발1", 10000, 5, "설명", "url", ItemStatus.SELLING, ItemCategory.SHOES);
         Member member = Member.createAdmin("관리자", "010-5555-5555", "text@text.com", "123456", Member.Role.ADMIN, "주소");
         Long userId = memberRepository.save(member).getId();
         Long itemId = itemRepository.save(item).getId();
