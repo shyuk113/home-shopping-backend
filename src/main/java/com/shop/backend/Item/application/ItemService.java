@@ -107,7 +107,7 @@ public class ItemService {
             if(cache != null){
                 cache.evict(itemId);
             }
-        }, 500, TimeUnit.MICROSECONDS);
+        }, 500, TimeUnit.MILLISECONDS);
     }
 
     //cachePut을 사용할 경우 (조회가 늦게 끝나서 최신값을 덮어쓰는 상황 인위적으로 재현)
