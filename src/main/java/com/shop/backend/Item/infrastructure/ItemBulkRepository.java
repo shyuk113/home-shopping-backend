@@ -19,18 +19,19 @@ public class ItemBulkRepository {
 
     public void bulkInsert(List<ItemRow> rows) {
         String sql = """
-                INSERT INTO item (name, price, quantity, description, image_url, status, category, created_at, updated_at)
-                VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+                INSERT INTO item (seller_id, name, price, quantity, description, image_url, status, category, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
                 """;
         jdbcTemplate.batchUpdate(sql, rows, BATCH_SIZE, (ps, row) -> {
-            ps.setString(1, row.name());
-            ps.setInt(2, row.price());
-            ps.setInt(3, row.quantity());
-            ps.setString(4, row.description());
-            ps.setString(5, row.status().name());
-            ps.setString(6, row.category().name());
-            ps.setObject(7, row.createdAt());
+            ps.setLong(1, row.sellerId());
+            ps.setString(2, row.name());
+            ps.setInt(3, row.price());
+            ps.setInt(4, row.quantity());
+            ps.setString(5, row.description());
+            ps.setString(6, row.status().name());
+            ps.setString(7, row.category().name());
             ps.setObject(8, row.createdAt());
+            ps.setObject(9, row.createdAt());
         });
     }
 
@@ -44,7 +45,7 @@ public class ItemBulkRepository {
         return jdbcTemplate.queryForObject("SELECT count(*) FROM item", Long.class);
     }
 
-    public record ItemRow(String name, int price, int quantity, String description,
+    public record ItemRow(Long sellerId, String name, int price, int quantity, String description,
                           ItemStatus status, ItemCategory category, LocalDateTime createdAt) {
     }
 

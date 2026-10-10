@@ -2,13 +2,8 @@ package com.shop.backend.Item.domain;
 
 import com.shop.backend.common.BaseEntity;
 import com.shop.backend.global.exception.OutOfStockException;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import com.shop.backend.seller.domain.Seller;
+import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
@@ -38,8 +33,13 @@ public class Item extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private ItemCategory category;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "seller_id", nullable = false)
+    private Seller seller;
+
     @Builder
-    private Item(String name, int price, int quantity, String description, String imageUrl, ItemStatus status, ItemCategory category) {
+    private Item(Seller seller, String name, int price, int quantity, String description, String imageUrl, ItemStatus status, ItemCategory category) {
+        this.seller = seller;
         this.name = name;
         this.price = price;
         this.quantity = quantity;
@@ -49,8 +49,9 @@ public class Item extends BaseEntity {
         this.category = category;
     }
 
-    public static Item createItem(String name, int price, int quantity, String description, String imageUrl, ItemStatus status, ItemCategory category) {
+    public static Item createItem(Seller seller,String name, int price, int quantity, String description, String imageUrl, ItemStatus status, ItemCategory category) {
         return Item.builder()
+                .seller(seller)
                 .name(name)
                 .price(price)
                 .quantity(quantity)

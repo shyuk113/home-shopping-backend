@@ -55,11 +55,22 @@ public class DummyDataSeeder implements ApplicationRunner {
     @Value("${seed.days:365}")
     private int days;   // 주문 시각을 최근 N일에 분산
 
+    private static final int SELLER_COUNT = 1_000;
+
     @Override
     public void run(ApplicationArguments args) {
+        seedSellers();
         seedItems();
         seedOrders();
     }
+
+    private void seedSellers(){
+        Long existing =jdbcTemplate.queryForObject("SELECT count(*) FROM seller", Long.class);
+        if(existing>=SELLER_COUNT) return;
+        jdbcTemplate.update("""
+INSERT INTO seller (name, created_at, updated_at) SELECT '판매자-' || gs, now(), now() FROM generate_series(?, ?) gs """, existing+1, SELLER_COUNT);
+    }
+
 
     private void seedItems() {
         long existing = itemBulkRepository.count();
@@ -76,7 +87,8 @@ public class DummyDataSeeder implements ApplicationRunner {
             List<ItemRow> rows = new ArrayList<>(size);
             for (int i = 0; i < size; i++) {
                 long no = offset + i + 1;
-                rows.add(new ItemRow(
+                long sellerId = (no - 1) % SELLER_COUNT + 1;
+                rows.add(new ItemRow(sellerId,
                         "상품-" + no,
                         random.nextInt(10, 500) * 100,          // 1,000 ~ 49,900원
                         random.nextInt(1, 1_000),
