@@ -1,4 +1,7 @@
 spring:
+  batch:
+    job:
+      enabled: false
   jpa:
     hibernate:
       ddl-auto: create
