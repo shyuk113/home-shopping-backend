@@ -48,18 +48,19 @@ public class Order extends BaseEntity {
     private OrderStatus status;
 
     @Builder
-    private Order(Member member, List<OrderItem> orderItems, OrderStatus status) {
+    private Order(Member member, OrderStatus status) {
         this.member = member;
-        this.orderItems = orderItems;
         this.status = status;
     }
 
     public static Order createOrder(Member member, List<OrderItem> orderItems){
-        return Order.builder()
+        Order order = Order.builder()
                 .member(member)
-                .orderItems(orderItems)
                 .status(OrderStatus.PENDING)
                 .build();
+        // 연관관계의 주인(OrderItem.order)까지 설정해야 order_item.order_id가 저장된다
+        orderItems.forEach(order::addOrderItem);
+        return order;
     }
 
     public void addOrderItem(OrderItem orderItem){
