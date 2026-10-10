@@ -32,9 +32,10 @@ class ItemServiceTest {
 
     @TestConfiguration
     static class TestCacheConfig{
+        // RedisConfig의 cacheManager 빈과 이름이 겹치면 빈 정의 오버라이드 예외가 나므로 이름을 분리하고 @Primary로 우선 주입
         @Bean
         @Primary
-        public CacheManager cacheManager(){
+        public CacheManager testCacheManager(){
             return new ConcurrentMapCacheManager("item", "itemList");
         }
     }
