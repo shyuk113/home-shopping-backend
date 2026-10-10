@@ -1,0 +1,9 @@
+# 대용량 데이터(주문 1,000만 건)를 보존한 상태로 실행하기 위한 프로필.
+# local과 함께 활성화한다: --spring.profiles.active=local,bench
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+  sql:
+    init:
+      mode: never
