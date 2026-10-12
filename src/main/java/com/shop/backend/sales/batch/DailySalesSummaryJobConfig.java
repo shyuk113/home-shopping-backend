@@ -60,7 +60,7 @@ public class DailySalesSummaryJobConfig {
             ORDER BY CAST(o.order_time AS date), i.seller_id, o.id
             """;
     /*
-    ORDER BY o.id, i.seller_id
+    ORDER BY CAST(o.order_time AS date), i.seller_id, o.id
     커서 Reader는 재시작할 때 쿼리를 다시 실행하고 이미 처리한 개수만큼 건너뜀
     순서가 매번 같지 않으면 엉뚱한 행을 건너뛰어 집계가 달라짐
      */
