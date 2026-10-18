@@ -13,12 +13,16 @@ SELECT '부하테스트유저' || gs,
        now()
 FROM generate_series(1, 1000) AS gs;
 
--- 2) 재고가 넉넉한 상품 1개 (id 1) - 모든 주문이 이 상품을 참조하게 해서
---    confirm() 의 재고 차감 비관적 락(findByIdWithLock) 경합을 관찰할 수 있게 함
-INSERT INTO item (name, price, quantity, description, image_url, status, created_at, updated_at)
-VALUES ('부하테스트 상품', 10000, 1000000, '동시성 부하테스트용 상품', NULL, 'SELLING', now(), now());
+-- 2) 판매자 1명 (id 1) - item.seller_id 가 NOT NULL 이므로 상품보다 먼저 시딩
+INSERT INTO seller (name, created_at, updated_at)
+VALUES ('부하테스트 판매자', now(), now());
 
--- 3) PENDING 주문 1600건 (id 1~1600) - 100+500+1000 동시 요청 시나리오가 각각
+-- 3) 재고가 넉넉한 상품 1개 (id 1) - 모든 주문이 이 상품을 참조하게 해서
+--    confirm() 의 재고 차감 비관적 락(findByIdWithLock) 경합을 관찰할 수 있게 함
+INSERT INTO item (seller_id, name, price, quantity, description, image_url, status, created_at, updated_at)
+VALUES (1, '부하테스트 상품', 10000, 1000000, '동시성 부하테스트용 상품', NULL, 'SELLING', now(), now());
+
+-- 4) PENDING 주문 1600건 (id 1~1600) - 100+500+1000 동시 요청 시나리오가 각각
 --    독립된 주문 구간을 소비하므로 필요한 만큼(100+500+1000=1600) 시딩
 INSERT INTO orders (member_id, city, street, zipcode, order_time, status, created_at, updated_at)
 SELECT ((gs - 1) % 20) + 1,
@@ -31,7 +35,7 @@ SELECT ((gs - 1) % 20) + 1,
        now()
 FROM generate_series(1, 1600) AS gs;
 
--- 4) 각 주문에 상품 1개씩(수량 1) 연결 -> 주문 총액 10000원으로 고정
+-- 5) 각 주문에 상품 1개씩(수량 1) 연결 -> 주문 총액 10000원으로 고정
 INSERT INTO order_item (order_id, item_id, order_price, quantity)
 SELECT id, 1, 10000, 1
 FROM orders;
