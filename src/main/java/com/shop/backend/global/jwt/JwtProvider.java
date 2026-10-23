@@ -16,7 +16,8 @@ public class JwtProvider {
     @Value("${jwt.secret}")
     private String secretKey;
 
-    private final long accessTokenValidity = 1000 * 60 * 30; //30 분
+    @Value("${jwt.expiration}")
+    private long accessTokenValidity; //30 분
 
     public String createAccessToken(String email, String role){
         Date now = new Date();
