@@ -29,7 +29,7 @@ public class OrderService {
         Member member = memberRepository.findById(memberId).orElseThrow(()-> new EntityNotFoundException("Member not found"));
         Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("Item not found"));
 
-        if (item.getQuantity() <= quantity){
+        if (item.getQuantity() < quantity){
             throw new OutOfStockException("재고가 부족합니다. 현재 남은 재고: " + item.getQuantity());
         }
 
