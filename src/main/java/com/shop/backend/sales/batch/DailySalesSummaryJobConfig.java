@@ -24,6 +24,7 @@ import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -89,24 +90,31 @@ public class DailySalesSummaryJobConfig {
 
 
     @Bean
-    public Job dailySalesSummaryJob(Step deleteDailySalesSummaryStep, Step aggregateDailySalesStep,JobResultLoggingListener jobResultLoggingListener){
+    public Job dailySalesSummaryJob(Step deleteDailySalesSummaryStep, Step aggregateDailySalesManagerStep,JobResultLoggingListener jobResultLoggingListener){
         return new JobBuilder(JOB_NAME, jobRepository)
                 .validator(new SalesPeriodParametersValidator())
                 .listener(jobResultLoggingListener)
                 .start(deleteDailySalesSummaryStep)
-                .next(aggregateDailySalesStep)
+                .next(aggregateDailySalesManagerStep)
                 .build();
     }
 
     /**
-     * chunkSize, reader를 Job 파라미터로 받기 위해 @JobScope로 Job 실행 시점에 Step을 만든다. (비교 실험용)
-     * 세 Reader 빈은 @StepScope 프록시라 주입만으로는 생성되지 않고, 선택된 Reader만 Step 실행 시 만들어진다.
+     * Manager Step: 집계 기간을 날짜 단위로 gridSize개 파티션으로 나누고, 각 파티션을 Worker Step으로 병렬 실행한다.
+     * gridSize=1이면 파티션 하나가 전체 기간을 처리하므로 단일 스레드 실행과 같다. (병렬 비교 실험의 기준값)
+     *
+     * 날짜로 나누는 이유: 파티션끼리 같은 (판매자, 날짜) 키를 절대 건드리지 않으므로
+     * 병렬 upsert 사이에 행 잠금 경합이나 누적값 충돌이 생기지 않는다.
      */
     @Bean
     @JobScope
-    public Step aggregateDailySalesStep(
+    public Step aggregateDailySalesManagerStep(
+            @Value("#{jobParameters['from']}") LocalDate from,
+            @Value("#{jobParameters['to']}") LocalDate to,
+            @Value("#{jobParameters['gridSize'] ?: 1}") Long gridSize,
             @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize,
             @Value("#{jobParameters['reader'] ?: 'cursor'}") String readerType,
+            @Value("#{jobParameters['failOnDate']}") String failOnDate,
             JdbcCursorItemReader<SalesRow> salesRowCursorReader,
             JpaPagingItemReader<SalesRow> salesRowJpaPagingReader,
             NoOffsetSalesRowReader salesRowNoOffsetReader) {
@@ -116,13 +124,40 @@ public class DailySalesSummaryJobConfig {
             case "nooffset" -> salesRowNoOffsetReader;
             default -> throw new IllegalArgumentException("reader는 cursor | jpa | nooffset 중 하나여야 합니다: " + readerType);
         };
-        log.info("[batch] aggregateDailySalesStep reader={} chunkSize={}", readerType, chunkSize);
 
+        log.info("[batch] aggregateDailySalesStep reader={} chunkSize={} gridSize={}", readerType, chunkSize, gridSize);
+
+        // 재시작 시연: failOnDate가 있으면 그 날짜 데이터에서 의도적으로 실패시키는 Processor를 쓴다
+        ItemProcessor<SalesRow, SalesDelta> processor = failOnDate == null
+                ? salesDeltaProcessor()
+                : new FailureInjectingSalesDeltaProcessor(LocalDate.parse(failOnDate));
+        if (failOnDate != null) {
+            log.warn("[batch] 재시작 시연 모드: {} 데이터에서 의도적으로 실패합니다", failOnDate);
+        }
+
+        SimpleAsyncTaskExecutor taskExecutor = new SimpleAsyncTaskExecutor("partition-");
+        taskExecutor.setConcurrencyLimit(gridSize.intValue());
+
+        return new StepBuilder("aggregateDailySalesManagerStep", jobRepository)
+                .partitioner("aggregateDailySalesStep", new SalesDatePartitioner(from, to))
+                .step(aggregateDailySalesWorkerStep(chunkSize.intValue(), reader, processor))
+                .gridSize(gridSize.intValue())
+                .taskExecutor(taskExecutor)
+                .build();
+    }
+
+    /**
+     * Worker Step: 파티션 하나(날짜 범위)를 chunk 단위로 집계한다.
+     * 빈이 아닌 일반 객체로 만드는 이유: @JobScope 프록시로 두면 파티션 실행 스레드에는 Job 컨텍스트가 없어서
+     * 프록시가 실제 Step을 찾지 못한다. Reader는 @StepScope라 각 파티션 스레드에서 따로 생성된다.
+     * Writer와 Processor는 상태가 없어서 여러 파티션이 함께 써도 안전하다.
+     */
+    private Step aggregateDailySalesWorkerStep(int chunkSize, ItemReader<SalesRow> reader, ItemProcessor<SalesRow, SalesDelta> processor) {
         return new StepBuilder("aggregateDailySalesStep", jobRepository)
-                .<SalesRow, SalesDelta>chunk(chunkSize.intValue())
+                .<SalesRow, SalesDelta>chunk(chunkSize)
                 .transactionManager(transactionManager)
                 .reader(reader)
-                .processor(salesDeltaProcessor())
+                .processor(processor)
                 .writer(new DailySalesSummaryWriter(jdbcTemplate))
                 .build();
     }
@@ -134,8 +169,10 @@ public class DailySalesSummaryJobConfig {
     그러면 커서가 열리지 않거나 재시작 위치가 저장되지 않음
      */
     public JdbcCursorItemReader<SalesRow> salesRowCursorReader(
-            @Value("#{jobParameters['from']}") LocalDate from,
-            @Value("#{jobParameters['to']}") LocalDate to){
+            @Value("#{stepExecutionContext['from']}") String fromValue,
+            @Value("#{stepExecutionContext['to']}") String toValue){
+        LocalDate from = LocalDate.parse(fromValue);
+        LocalDate to = LocalDate.parse(toValue);
         return new JdbcCursorItemReaderBuilder<SalesRow>()
                 .name("salesRowCursorReader")
                 .dataSource(dataSource)
@@ -161,9 +198,11 @@ public class DailySalesSummaryJobConfig {
     @Bean
     @StepScope
     public JpaPagingItemReader<SalesRow> salesRowJpaPagingReader(
-            @Value("#{jobParameters['from']}") LocalDate from,
-            @Value("#{jobParameters['to']}") LocalDate to,
+            @Value("#{stepExecutionContext['from']}") String fromValue,
+            @Value("#{stepExecutionContext['to']}") String toValue,
             @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize) {
+        LocalDate from = LocalDate.parse(fromValue);
+        LocalDate to = LocalDate.parse(toValue);
         return new JpaPagingItemReaderBuilder<SalesRow>()
                 .name("salesRowJpaPagingReader")
                 .entityManagerFactory(entityManagerFactory)
@@ -179,9 +218,11 @@ public class DailySalesSummaryJobConfig {
     @Bean
     @StepScope
     public NoOffsetSalesRowReader salesRowNoOffsetReader(
-            @Value("#{jobParameters['from']}") LocalDate from,
-            @Value("#{jobParameters['to']}") LocalDate to,
+            @Value("#{stepExecutionContext['from']}") String fromValue,
+            @Value("#{stepExecutionContext['to']}") String toValue,
             @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize) {
+        LocalDate from = LocalDate.parse(fromValue);
+        LocalDate to = LocalDate.parse(toValue);
         return new NoOffsetSalesRowReader(jdbcTemplate, from, to, chunkSize.intValue());
     }
 
