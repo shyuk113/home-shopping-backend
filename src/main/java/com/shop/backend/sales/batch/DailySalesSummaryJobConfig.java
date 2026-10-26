@@ -105,8 +105,8 @@ public class DailySalesSummaryJobConfig {
     @Bean
     @JobScope
     public Step aggregateDailySalesStep(
-            @Value("#{jobParameters['chunkSize'] ?: 1000}") Long chunkSize,
-            JdbcCursorItemReader<SalesRow> salesRowCursorReader) {
+            @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize,
+            @Value("#{jobParameters['reader'] ?: 'cursor'}") String readerType,
             JdbcCursorItemReader<SalesRow> salesRowCursorReader,
             JpaPagingItemReader<SalesRow> salesRowJpaPagingReader,
             NoOffsetSalesRowReader salesRowNoOffsetReader) {
@@ -163,6 +163,7 @@ public class DailySalesSummaryJobConfig {
     public JpaPagingItemReader<SalesRow> salesRowJpaPagingReader(
             @Value("#{jobParameters['from']}") LocalDate from,
             @Value("#{jobParameters['to']}") LocalDate to,
+            @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize) {
         return new JpaPagingItemReaderBuilder<SalesRow>()
                 .name("salesRowJpaPagingReader")
                 .entityManagerFactory(entityManagerFactory)
@@ -180,6 +181,7 @@ public class DailySalesSummaryJobConfig {
     public NoOffsetSalesRowReader salesRowNoOffsetReader(
             @Value("#{jobParameters['from']}") LocalDate from,
             @Value("#{jobParameters['to']}") LocalDate to,
+            @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize) {
         return new NoOffsetSalesRowReader(jdbcTemplate, from, to, chunkSize.intValue());
     }
 
