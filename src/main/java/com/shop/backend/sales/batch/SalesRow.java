@@ -15,4 +15,10 @@ public record SalesRow(
         int quantity,
         long amount
 ) {
+    /**
+      JPQL 생성자 표현식(SELECT new ...)용. JPQL의 SUM은 Long을 반환하므로 래퍼 타입을 받는 생성자가 필요하다.
+     */
+    public SalesRow(Long orderId, Long sellerId, LocalDate salesDate, OrderStatus status, Long quantity, Long amount) {
+        this(orderId.longValue(), sellerId.longValue(), salesDate, status, quantity.intValue(), amount.longValue());
+    }
 }
