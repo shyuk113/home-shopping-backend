@@ -114,6 +114,7 @@ public class DailySalesSummaryJobConfig {
             @Value("#{jobParameters['gridSize'] ?: 1}") Long gridSize,
             @Value("#{jobParameters['chunkSize'] ?: 5000}") Long chunkSize,
             @Value("#{jobParameters['reader'] ?: 'cursor'}") String readerType,
+            @Value("#{jobParameters['failOnDate']}") String failOnDate,
             JdbcCursorItemReader<SalesRow> salesRowCursorReader,
             JpaPagingItemReader<SalesRow> salesRowJpaPagingReader,
             NoOffsetSalesRowReader salesRowNoOffsetReader) {
@@ -123,14 +124,23 @@ public class DailySalesSummaryJobConfig {
             case "nooffset" -> salesRowNoOffsetReader;
             default -> throw new IllegalArgumentException("reader는 cursor | jpa | nooffset 중 하나여야 합니다: " + readerType);
         };
+
         log.info("[batch] aggregateDailySalesStep reader={} chunkSize={} gridSize={}", readerType, chunkSize, gridSize);
+
+        // 재시작 시연: failOnDate가 있으면 그 날짜 데이터에서 의도적으로 실패시키는 Processor를 쓴다
+        ItemProcessor<SalesRow, SalesDelta> processor = failOnDate == null
+                ? salesDeltaProcessor()
+                : new FailureInjectingSalesDeltaProcessor(LocalDate.parse(failOnDate));
+        if (failOnDate != null) {
+            log.warn("[batch] 재시작 시연 모드: {} 데이터에서 의도적으로 실패합니다", failOnDate);
+        }
 
         SimpleAsyncTaskExecutor taskExecutor = new SimpleAsyncTaskExecutor("partition-");
         taskExecutor.setConcurrencyLimit(gridSize.intValue());
 
         return new StepBuilder("aggregateDailySalesManagerStep", jobRepository)
                 .partitioner("aggregateDailySalesStep", new SalesDatePartitioner(from, to))
-                .step(aggregateDailySalesWorkerStep(chunkSize.intValue(), reader))
+                .step(aggregateDailySalesWorkerStep(chunkSize.intValue(), reader, processor))
                 .gridSize(gridSize.intValue())
                 .taskExecutor(taskExecutor)
                 .build();
@@ -142,12 +152,12 @@ public class DailySalesSummaryJobConfig {
      * 프록시가 실제 Step을 찾지 못한다. Reader는 @StepScope라 각 파티션 스레드에서 따로 생성된다.
      * Writer와 Processor는 상태가 없어서 여러 파티션이 함께 써도 안전하다.
      */
-    private Step aggregateDailySalesWorkerStep(int chunkSize, ItemReader<SalesRow> reader) {
+    private Step aggregateDailySalesWorkerStep(int chunkSize, ItemReader<SalesRow> reader, ItemProcessor<SalesRow, SalesDelta> processor) {
         return new StepBuilder("aggregateDailySalesStep", jobRepository)
                 .<SalesRow, SalesDelta>chunk(chunkSize)
                 .transactionManager(transactionManager)
                 .reader(reader)
-                .processor(salesDeltaProcessor())
+                .processor(processor)
                 .writer(new DailySalesSummaryWriter(jdbcTemplate))
                 .build();
     }
