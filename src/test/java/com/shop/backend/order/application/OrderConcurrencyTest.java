@@ -7,9 +7,12 @@ import com.shop.backend.Item.domain.ItemStatus;
 import com.shop.backend.Item.infrastructure.ItemRepository;
 import com.shop.backend.member.domain.Member;
 import com.shop.backend.member.infrastructure.MemberRepository;
+import com.shop.backend.payment.application.PaymentConfirmFacade;
 import com.shop.backend.payment.application.PaymentService;
 import com.shop.backend.payment.application.dto.PaymentResponse;
 import com.shop.backend.payment.domain.PaymentMethod;
+import com.shop.backend.payment.domain.PaymentStatus;
+import com.shop.backend.payment.infrastructure.PaymentRepository;
 import com.shop.backend.seller.domain.Seller;
 import com.shop.backend.seller.infrastructure.SellerRepository;
 import java.util.ArrayList;
@@ -41,8 +44,12 @@ class OrderConcurrencyTest {
     private MemberRepository memberRepository;
     @Autowired
     private SellerRepository sellerRepository;
+    @Autowired
+    private PaymentRepository paymentRepository;
 
     private Long itemId;
+    @Autowired
+    private PaymentConfirmFacade paymentConfirmFacade;
 
     @BeforeEach
     void setUp() {
@@ -89,7 +96,7 @@ class OrderConcurrencyTest {
                 readyLatch.countDown();
                 try {
                     startLatch.await(); // 모든 스레드가 동시에 출발하도록 대기
-                    paymentService.confirm(paymentKey, PRICE, memberId);
+                    paymentConfirmFacade.confirm(paymentKey, PRICE, memberId);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();
@@ -110,6 +117,12 @@ class OrderConcurrencyTest {
         assertEquals(THREAD_COUNT - STOCK, failCount.get());
         assertEquals(0, result.getQuantity());
         assertEquals(ItemStatus.SOLD_OUT, result.getStatus());
+
+        long failedPayments = paymentKeys.stream()
+                .map(key -> paymentRepository.findByPaymentKey(key).orElseThrow())
+                .filter(p -> p.getStatus() == PaymentStatus.FAILED)
+                .count();
+        assertEquals(THREAD_COUNT - STOCK, failedPayments);
     }
 
     private Member createMember(String phone) {
