@@ -5,6 +5,7 @@ import com.shop.backend.Item.application.dto.response.ItemResponseDto;
 import com.shop.backend.Item.application.dto.request.ItemCreateRequestDto;
 import com.shop.backend.Item.application.dto.request.ItemUpdateRequestDto;
 import com.shop.backend.Item.domain.ItemCategory;
+import com.shop.backend.member.domain.Member;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -36,19 +37,19 @@ public class ItemController {
     }
 
     @PostMapping //아이템 등록
-    public ResponseEntity<ItemResponseDto> createItem(@Valid @RequestBody ItemCreateRequestDto request, @AuthenticationPrincipal Long userId){
-        return ResponseEntity.status(HttpStatus.CREATED).body(itemService.createItem(userId, request));
+    public ResponseEntity<ItemResponseDto> createItem(@Valid @RequestBody ItemCreateRequestDto request, @AuthenticationPrincipal Member member){
+        return ResponseEntity.status(HttpStatus.CREATED).body(itemService.createItem(member.getId(), request));
     }
 
     @PutMapping("/{id}") //아이템 수정
-    public ResponseEntity<Void> updateItem(@PathVariable("id") Long itemId, @Valid @RequestBody ItemUpdateRequestDto itemUpdateDto, @AuthenticationPrincipal Long userId){
-        itemService.updateItem(itemId,itemUpdateDto, userId);
+    public ResponseEntity<Void> updateItem(@PathVariable("id") Long itemId, @Valid @RequestBody ItemUpdateRequestDto itemUpdateDto, @AuthenticationPrincipal Member member){
+        itemService.updateItem(itemId,itemUpdateDto, member.getId());
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}") //아이템 삭제
-    public ResponseEntity<Void> deleteItem(@PathVariable("id") Long itemId, @AuthenticationPrincipal Long userId){
-        itemService.deleteItem(itemId, userId);
+    public ResponseEntity<Void> deleteItem(@PathVariable("id") Long itemId, @AuthenticationPrincipal Member member){
+        itemService.deleteItem(itemId, member.getId());
         return ResponseEntity.ok().build();
     }
 
