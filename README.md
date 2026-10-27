@@ -150,6 +150,7 @@ flowchart LR
 
 - `orders` ID를 시퀀스에서 미리 할당(`nextval` + `generate_series`)해, batch insert로는 돌려받기 어려운 생성 키 없이도 `order_item.order_id`를 채움
 - 1만 건 단위 트랜잭션, 1천 건 단위 batch, 중단 후 재실행 시 남은 건수만 이어서 적재
+- 실서비스처럼 **주문 ID가 커질수록 주문 시각도 늦어지게** 생성 → ID·시각·물리 저장 순서가 일치 (Step 4에서 이 차이가 인덱스 성능을 좌우함을 확인)
 
 **PostgreSQL JDBC `reWriteBatchedInserts` 효과** (10만 건, 각 3회 측정 중앙값)
 
@@ -184,9 +185,39 @@ flowchart LR
 | Partitioning | 9월 151만 행, chunk 5,000 | gridSize 1: 24.6s / 2: 22.5s / 4: 28.2s / 8: **15.3s** | 최대 1.6배. 파티션 시간의 64~88%가 파티션마다 중복되는 풀스캔 → 기본값 1 유지 |
 | 실패 후 재시작 | gridSize 4, 9/5에서 실패 주입 | 실패 파티션만 커밋된 20만 행 다음부터 재처리 (200,000 + 204,870 = 파티션 전체) | 누락·중복 0, 최종 집계 원본과 일치 |
 
-**공통 결론**: Reader·Partitioning 모두 병목이 `orders.order_time` 인덱스 부재로 인한 **전체 테이블 스캔**으로 수렴했습니다. 다음 단계에서 인덱스를 설계한 뒤 두 실험을 다시 측정합니다.
+**공통 결론**: Reader·Partitioning 모두 병목이 `orders.order_time` 인덱스 부재로 인한 **전체 테이블 스캔**으로 수렴했습니다. → Step 4에서 인덱스를 설계한 뒤 두 실험을 다시 측정했습니다.
 
 원본 측정값, 실행 계획, 파티션별 분석, 재현 명령은 **[Step 2 실험 기록](./docs/experiments/step2-spring-batch.md)**에 있습니다.
+
+### 4. 쿼리 튜닝 (Step 4)
+
+주요 조회 쿼리를 `EXPLAIN (ANALYZE, BUFFERS)`로 측정하며 인덱스를 하나씩 추가했습니다. 조건별 3~5회 중앙값입니다.
+
+| 쿼리 | 전 | 후 | 실행 계획 변화 |
+|---|---|---|---|
+| 배치 Reader (하루치) | 2,408ms | **380ms** (6.3배) | orders·order_item Parallel Seq Scan(2GB) → Index Scan + Nested Loop, 디스크 읽기 0 |
+| 회원 주문 목록 | 266ms | **18.5ms** (14배) | Seq Scan(950MB) → Bitmap Index Scan |
+| 회원 최근 주문 20건 | – | **0.12ms** | `(member_id, order_time)` 역방향 스캔, 정렬 없이 20건에서 멈춤 |
+| 판매자 대시보드 원본 집계 | 1,288ms | **290ms** (4.4배) | order_item 2,000만 행 스캔 → 판매자 상품 기준 인덱스 조회 |
+| 판매자 대시보드 집계 테이블 | **0.25ms** | | 원본 직접 집계 대비 1,000배 이상 → Step 3에서 집계 테이블 사용 근거 |
+
+채택한 인덱스: `orders(order_time)`, `orders(member_id, order_time)`, `order_item(order_id)`, `order_item(item_id)`, `item(seller_id)` ([`docs/03_indexes.sql`](./docs/03_indexes.sql))
+
+| 판단 | 근거 |
+|---|---|
+| 커버링 인덱스 미채택 | `INCLUDE (item_id, quantity, order_price)`는 일반 인덱스 대비 15% 빠르지만 크기 2.2배(357MB → 773MB). `order_id`의 correlation이 1이라 힙 접근이 이미 순차에 가까움 |
+| 복합 인덱스는 등치 컬럼을 앞에 | `(order_time, member_id)`는 평소엔 비슷하지만, 주문이 없는 회원을 조회하면 인덱스 전체를 훑음 (0.08ms vs **294ms**) |
+| 데이터 물리 순서까지 확인 | 더미 데이터는 주문 시각이 무작위라 correlation이 0. CLUSTER로 orders만 시각순 정렬하자 orders → order_item 지역성이 깨져 오히려 느려짐(528 → 718ms). ID를 시각순으로 다시 부여해 실서비스 조건을 재현한 뒤 380ms |
+| `work_mem`은 세션 단위로 | 월 단위 쿼리는 151만 행 정렬이 디스크로 넘어감(97MB). 4MB → 256MB에서 15.7s → 10.4s. 서버 전체가 아니라 배치 커넥션에서만 올리는 것이 적절 |
+
+**배치 2라운드** (Step 2와 같은 조건)
+
+| 실험 | Step 2 (인덱스 없음) | Step 4 | 결론 |
+|---|---|---|---|
+| Reader 3종 (하루) | Cursor 9.2s / JPA 82.0s / No-Offset 76.2s | Cursor **1.9s** / JPA 10.2s / No-Offset **7.5s** | 풀스캔이 사라지자 No-Offset이 OFFSET보다 26% 빠른 차이가 드러남. Cursor 유지 |
+| Partitioning (9월) | gridSize 1: 24.6s / 8: 15.3s | gridSize 1: 29.5s / 4: 24.2s / 8: **5.9s** | 파티션이 7~8일 이상이면 플래너가 order_item 풀스캔을 고르고, 3~4일 이하면 인덱스를 탐 (테이블 스캔 카운터로 확인). gridSize 8에서 단일 대비 5배 |
+
+전체 측정값, 실행 계획, 재현 SQL은 **[Step 4 실험 기록](./docs/experiments/step4-query-tuning.md)**에 있습니다.
 
 ---
 
@@ -323,9 +354,9 @@ export JWT_SECRET=$(openssl rand -base64 64)
 |---|---|---|
 | `seed.order-count` | 10,000,000 | 주문 건수 (주문상품은 주문당 1~3개) |
 | `seed.item-count` | 100,000 | 상품 건수 (판매자 1,000명에게 균등 배정) |
-| `seed.days` | 365 | 주문 시각을 최근 N일에 분산 |
+| `seed.days` | 365 | 주문 시각을 최근 N일에 ID 순서대로 분산 |
 
-이미 적재된 건수는 건너뛰고 남은 만큼만 이어서 적재합니다. 기존 DB에 판매자·집계 테이블을 추가할 때 사용한 마이그레이션 SQL은 [`docs/`](./docs)에 있습니다.
+이미 적재된 건수는 건너뛰고 남은 만큼만 이어서 적재합니다. 기존 DB에 판매자·집계 테이블·인덱스를 추가할 때 사용한 마이그레이션 SQL은 [`docs/`](./docs)에 있습니다.
 
 ### 5. 일별 매출 집계 Job 실행
 
@@ -338,7 +369,7 @@ export JWT_SECRET=$(openssl rand -base64 64)
 | `from`, `to` | (필수) | 집계 기간 (양 끝 포함). 타입을 붙여 `LocalDate`로 전달 |
 | `reader` | `cursor` | `cursor` / `jpa` / `nooffset` |
 | `chunkSize` | 5000 | chunk 크기. 페이징 Reader는 페이지 크기도 같음 |
-| `gridSize` | 1 | 파티션 수 (1 = 단일 스레드) |
+| `gridSize` | 1 | 파티션 수 (1 = 단일 스레드). 인덱스 적용 후 1개월 집계는 8(파티션당 3~4일)이 가장 빠름 |
 | `run` | | 같은 기간을 다시 집계할 때 구분용 값 |
 | `failOnDate` | | 재시작 시연용. 해당 날짜 데이터에서 의도적으로 실패 (non-identifying으로 전달) |
 
@@ -412,7 +443,10 @@ k6 run loadtest/payment-scenario.js
 | 집계 배치 시간의 94%가 Writer에 소요 | 주문 ID 순으로 읽어 chunk 내 같은 집계 키가 거의 없음 → 행마다 UPDATE (146만 회), 테이블 177MB로 부풀음 | Reader 정렬 키를 집계 키 순으로 변경 → UPDATE 1,489회, 238s → 90s |
 | PostgreSQL 커서 Reader가 메모리를 과다 사용할 위험 | 드라이버가 autoCommit 상태에서는 결과 전체를 한 번에 가져옴 | `connectionAutoCommit(false)` + `fetchSize` 설정 |
 | Partitioning 적용 시 Worker Step을 찾지 못함 | `@JobScope` 프록시는 Job 컨텍스트를 스레드별로 찾는데, 파티션 실행 스레드에는 Job 컨텍스트가 없음 | Worker Step을 빈이 아닌 일반 객체로 Manager 안에서 생성 |
-| 8개로 나눠도 Partitioning이 1.6배밖에 빨라지지 않음 | 인덱스가 없어 파티션마다 전체 테이블 스캔을 중복 수행 (파티션 시간의 64~88%) | 원인 확인 후 기본값 `gridSize=1` 유지, 인덱스 설계를 우선 과제로 재설정 |
+| 8개로 나눠도 Partitioning이 1.6배밖에 빨라지지 않음 | 인덱스가 없어 파티션마다 전체 테이블 스캔을 중복 수행 (파티션 시간의 64~88%) | 인덱스 설계 후 재측정 → gridSize 8에서 5배 |
+| 인덱스를 추가해도 gridSize 2·4는 빨라지지 않음 | 파티션 기간이 7~8일 이상이면 플래너가 order_item 풀스캔 + Hash Join을 선택 (`pg_stat_user_tables`의 seq_scan 카운터로 확인) | 파티션을 3~4일 이하로 나눠 인덱스 Nested Loop를 타게 함 |
+| CLUSTER로 orders를 시각순 정렬했더니 조인 쿼리가 느려짐 (528 → 718ms) | 더미 데이터의 주문 ID와 시각이 무관해서, 시각순으로 읽으면 order_item을 랜덤 접근하게 됨 | ID를 시각순으로 다시 부여해 실서비스 조건 재현 (380ms), 시더도 ID 순서대로 시각이 증가하도록 수정 |
+| CLUSTER 직후 `VACUUM ANALYZE` 실패 (`could not resize shared memory segment`) | 병렬 VACUUM이 Docker 기본 `/dev/shm`(64MB)을 초과 | `VACUUM (PARALLEL 0, ANALYZE)`로 실행 |
 | 애플리케이션 기동 실패 (`Could not resolve placeholder 'cors.allowed.origins'`) | YAML 키는 `allowed-origins`인데 `@Value`는 `allowed.origins`로 조회. `@Value`는 relaxed binding을 하지 않음 | `@Value("${cors.allowed-origins}")`로 키 일치 |
 
 ---
@@ -427,7 +461,9 @@ k6 run loadtest/payment-scenario.js
 | | Chunk size 100 / 1,000 / 5,000 비교 | ✅ 완료 |
 | | Partitioning 병렬 처리 | ✅ 완료 |
 | | 실패 후 재시작 시연 | ✅ 완료 |
-| 쿼리 튜닝 | `orders(order_time)`, `order_item(order_id)` 인덱스 설계, `EXPLAIN ANALYZE` 전후 비교 → Reader·Partitioning 재측정 | ⏳ 다음 |
-| 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 예정 |
+| 쿼리 튜닝 | 인덱스 설계, `EXPLAIN ANALYZE` 전후 비교, 커버링·복합 인덱스 순서·correlation 검증 | ✅ 완료 |
+| | Reader·Partitioning 재측정 (배치 2라운드) | ✅ 완료 |
+| 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 다음 |
+| | 파티션 수와 동시 실행 수 분리 (하루 단위 파티션 + 동시 실행 제한) | ⏳ 예정 |
 
-**쿼리 튜닝 전 기준값** (PK 인덱스만 존재): 9월 Reader 쿼리 단독 14.1s, 하루 페이지 쿼리 1.6s (orders·order_item Parallel Seq Scan), 9월 원본 직접 집계 31.8s
+**쿼리 튜닝 결과**: 배치 Reader 쿼리 2.4s → 0.38s, 월 집계 배치 24.6s → 5.9s, 회원 주문 조회 266ms → 18.5ms
