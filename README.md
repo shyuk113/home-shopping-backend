@@ -408,7 +408,7 @@ EC2 + Nginx + HTTPS 구성 절차는 [DEPLOY.md](./DEPLOY.md)를 참고하세요
 
 | 테스트 | 검증 내용 |
 |---|---|
-| `OrderConcurrencyTest` | 재고 10개 상품의 결제 30건을 동시에 승인(`confirm`)하면 정확히 10건만 성공하고 재고가 0·`SOLD_OUT`이 되는지 |
+| `OrderConcurrencyTest` | 재고 10개 상품의 결제 30건을 동시에 승인(`confirm`)하면 정확히 10건만 성공하고 재고가 0·`SOLD_OUT`이 되는지, 실패한 20건이 모두 `FAILED`로 저장되는지 |
 | `CouponServiceTest` | 수량 100장 쿠폰에 500명 동시 발급 시 Redis 판정 성공 100 / 소진 400, Kafka Consumer 처리 후 DB 저장 100건 (Redis·Kafka 필요) |
 | `ItemServiceTest` | `@CachePut` 경쟁 상태 재현, 지연 삭제(Delayed Double Delete)로 오래된 캐시 제거 |
 | `PaymentFailureMonitorTest` | 결제 실패 임계치 감지 및 알림 쿨다운 |
@@ -417,20 +417,56 @@ EC2 + Nginx + HTTPS 구성 절차는 [DEPLOY.md](./DEPLOY.md)를 참고하세요
 
 ### 부하 테스트 (k6)
 
-`local` 프로필로 애플리케이션을 띄운 뒤 실행합니다. 시드 데이터(회원 1000명, 상품 1개, `PENDING` 주문 1600건)를 사용합니다.
+`local` 프로필의 시드 데이터(회원 1000명, 재고 100만 개 상품 1개, `PENDING` 주문 1600건)를 사용합니다.
+
+> ⚠️ `local` 프로필은 `ddl-auto: create`라서 기동할 때 테이블을 다시 만듭니다. 대용량 데이터가 있는 `shop` DB 대신 **부하 테스트 전용 DB**로 띄웁니다. 재시작할 때마다 시드가 초기화되므로 측정마다 앱을 재시작합니다.
 
 ```bash
-k6 run loadtest/coupon-scenario.js
+docker exec shop-loadtest-postgres psql -U shop -d shop -c "CREATE DATABASE shop_k6;"
 ```
 
 ```bash
-k6 run loadtest/payment-scenario.js
+./gradlew bootRun --args='--spring.profiles.active=local --spring.datasource.url=jdbc:postgresql://localhost:5433/shop_k6?reWriteBatchedInserts=true'
+```
+
+```bash
+k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.js
 ```
 
 | 시나리오 | 내용 | 합격 기준 |
 |---|---|---|
 | `coupon-scenario.js` | 수량 100장 쿠폰에 1000명 동시 발급 요청 | 정확히 100건만 발급 성공 |
-| `payment-scenario.js` | 결제 요청 → 승인 → 조회 흐름을 100 / 500 / 1000 동시 요청으로 실행 | 결제 흐름 성공률, 재고 정합성 |
+| `payment-scenario.js` | 결제 요청(ready) → 승인(confirm) → 조회(get) 흐름. 초당 도착률 기반(`ramping-arrival-rate`) 부하 | 실패율 1% 미만, 단계별 p95, 결제 `DONE` = 주문 `PAID` = 재고 감소 수 |
+
+#### 결제 시나리오 재측정 경과
+
+결제 API 버그 수정(주문 IDOR, `@AuthenticationPrincipal` 타입, 실패 상태 롤백) 이후 다시 측정했습니다. 환경은 Windows 로컬 PC 한 대에서 k6, 애플리케이션, PostgreSQL·Redis·Kafka(Docker)를 함께 실행했습니다.
+
+**스크립트 수정**
+
+| 문제 | 영향 | 수정 |
+|---|---|---|
+| 승인 URL 오타 `/comfirm` | 승인 요청이 전부 404 → **재고 차감 경로가 한 번도 실행되지 않음** | `/confirm` |
+| 승인 응답을 200으로 검사 | 컨트롤러는 204를 반환 | `status === 204` |
+| 응답이 없을 때 `.json()`에서 예외 | 실패한 반복이 집계에서 빠져 흐름 성공률이 100%로 표시됨 | 상태 코드 확인 후 파싱, 실패는 성공률에 반영 |
+| 전체 요청 p95만 집계 | 재고 차감(confirm)과 조회의 지연을 구분할 수 없음 | 단계별(`step:ready/confirm/get`) p95 threshold |
+
+**측정 결과**
+
+| 회차 | 부하 모델 | 결과 | 해석 |
+|---|---|---|---|
+| 1 | 100 / 500 / 1,000 VU가 같은 순간에 시작 (`shared-iterations`) | 결제 완료 773 / 1,600, 실패 26% (전부 첫 요청) | 실패는 모두 `connectex: ... actively refused` **TCP 연결 거부**. Windows의 연결 대기열 상한(약 200)을 넘는 동시 연결 버스트 때문이며, 100 VU 구간은 100% 성공. 애플리케이션이 아닌 테스트 환경의 한계 |
+| 2 | 초당 50 → 200 흐름으로 4초간 증가 후 6초 유지 (`ramping-arrival-rate`) | 결제 완료 1,282, 실패 0%, `dropped_iterations` 416. p95 ready 2.04s / confirm 3.09s / get 2.09s | 처리량이 **흐름 약 78건/s (HTTP 약 235 req/s)**에서 포화. 보낸 부하(200/s)가 처리 능력의 2.5배라 대기열이 쌓임 |
+| 3 | 처리 한계 아래 일정 부하 (`constant-arrival-rate` 50/s, 30초) | ⏳ 측정 예정 | 포화 없는 상태의 단계별 응답 시간 |
+
+**정합성**: 모든 회차에서 결제 `DONE` 수 = 주문 `PAID` 수 = 재고 감소 수가 정확히 일치했습니다(773 / 1,282). 초과 판매·중복 차감 0건.
+
+**병목 판단**: 2회차에서 재고 UPDATE가 없는 **조회(get) 단계도 p95 2초**로 함께 느려졌습니다. 재고 행 락이 병목이라면 승인 단계만 느려야 하므로, 병목은 서버 공용 자원으로 판단합니다. 후보는 다음과 같으며 3회차 이후 하나씩 확인합니다.
+
+- DB 커넥션 풀(Hikari 50)과 Tomcat 스레드(1,000)의 불균형
+- JWT 필터가 요청마다 회원을 DB에서 조회
+- Open Session In View(기본 활성화)로 요청이 끝날 때까지 커넥션 점유
+- 부하 발생기와 서버가 한 PC의 CPU를 나눠 씀
 
 ---
 
@@ -447,6 +483,10 @@ k6 run loadtest/payment-scenario.js
 | 인덱스를 추가해도 gridSize 2·4는 빨라지지 않음 | 파티션 기간이 7~8일 이상이면 플래너가 order_item 풀스캔 + Hash Join을 선택 (`pg_stat_user_tables`의 seq_scan 카운터로 확인) | 파티션을 3~4일 이하로 나눠 인덱스 Nested Loop를 타게 함 |
 | CLUSTER로 orders를 시각순 정렬했더니 조인 쿼리가 느려짐 (528 → 718ms) | 더미 데이터의 주문 ID와 시각이 무관해서, 시각순으로 읽으면 order_item을 랜덤 접근하게 됨 | ID를 시각순으로 다시 부여해 실서비스 조건 재현 (380ms), 시더도 ID 순서대로 시각이 증가하도록 수정 |
 | CLUSTER 직후 `VACUUM ANALYZE` 실패 (`could not resize shared memory segment`) | 병렬 VACUUM이 Docker 기본 `/dev/shm`(64MB)을 초과 | `VACUUM (PARALLEL 0, ANALYZE)`로 실행 |
+| 결제 확정이 실패해도 결제가 `READY`, 주문이 `PENDING`으로 남아 재결제 불가 | `confirm()`에서 실패 상태를 기록한 뒤 예외를 던져, `@Transactional` 롤백으로 실패 기록까지 사라짐 | 트랜잭션 없는 `PaymentConfirmFacade`에서 ① 확정 트랜잭션(실패 시 재고 포함 전부 롤백) → ② 별도 트랜잭션으로 `FAILED` 기록 순서로 실행. `noRollbackFor`는 다중 상품 주문에서 일부 재고 차감이 커밋될 위험이 있어 제외 |
+| 로그인한 사용자가 다른 회원의 주문을 생성·조회·취소할 수 있음 (IDOR) | 주문 API가 `memberId`를 요청 본문·파라미터로 받고 소유자 확인이 없음 | 인증 정보로 회원 식별, `findByIdAndMemberId`로 조회 단계에서 소유자 조건 적용. 타인 주문은 404로 존재 여부도 숨김 |
+| 결제 API는 항상 권한 오류, 상품 관리 API는 예외 | JWT 필터는 principal에 `Member`를 넣는데 `@AuthenticationPrincipal Long`으로 받아, 타입 불일치 시 Spring Security가 예외 없이 `null`을 주입 | 파라미터 타입을 `Member`로 통일 |
+| k6 부하 테스트에서 실패율 26% | 실패 전부가 TCP 연결 거부. Windows의 연결 대기열 상한(약 200)을 넘는 동시 연결 버스트 | 도착률 기반 부하 모델(`ramping-arrival-rate`)로 변경 → 실패율 0% |
 | 애플리케이션 기동 실패 (`Could not resolve placeholder 'cors.allowed.origins'`) | YAML 키는 `allowed-origins`인데 `@Value`는 `allowed.origins`로 조회. `@Value`는 relaxed binding을 하지 않음 | `@Value("${cors.allowed-origins}")`로 키 일치 |
 
 ---
@@ -463,7 +503,10 @@ k6 run loadtest/payment-scenario.js
 | | 실패 후 재시작 시연 | ✅ 완료 |
 | 쿼리 튜닝 | 인덱스 설계, `EXPLAIN ANALYZE` 전후 비교, 커버링·복합 인덱스 순서·correlation 검증 | ✅ 완료 |
 | | Reader·Partitioning 재측정 (배치 2라운드) | ✅ 완료 |
-| 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 다음 |
+| 코드 점검 | 주문 API IDOR, `@AuthenticationPrincipal` 타입 불일치, 결제 실패 상태 롤백 수정 및 테스트 검증 | ✅ 완료 |
+| 결제 부하 테스트 재측정 | 스크립트 버그 수정, 연결 거부·포화 원인 분석, 정합성 검증 | ✅ 1·2회차 완료 |
+| | 처리 한계 아래 일정 부하 측정, 병목 후보(커넥션 풀·OSIV·JWT 필터 조회) 검증 | ⏳ 다음 |
+| 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 예정 |
 | | 파티션 수와 동시 실행 수 분리 (하루 단위 파티션 + 동시 실행 제한) | ⏳ 예정 |
 
 **쿼리 튜닝 결과**: 배치 Reader 쿼리 2.4s → 0.38s, 월 집계 배치 24.6s → 5.9s, 회원 주문 조회 266ms → 18.5ms
