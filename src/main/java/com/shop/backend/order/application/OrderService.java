@@ -50,15 +50,15 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true) // 단건 조회
-    public OrderResponse getOrder(Long orderId){
-        Order order = orderRepository.findById(orderId)
+    public OrderResponse getOrder(Long orderId, Long memberId){
+        Order order = orderRepository.findByIdAndMemberId(orderId, memberId)
             .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return OrderResponse.from(order);
     }
 
     @Transactional // 주문 취소
-    public void cancelOrder(Long orderId){
-        Order order = orderRepository.findById(orderId)
+    public void cancelOrder(Long orderId, Long memberId){
+        Order order = orderRepository.findByIdAndMemberId(orderId, memberId)
             .orElseThrow(()-> new EntityNotFoundException("Order not found"));
 
         if(order.getStatus() == OrderStatus.CANCEL){

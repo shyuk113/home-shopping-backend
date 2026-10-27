@@ -59,6 +59,13 @@ public class GlobalExceptionHandler {
             .body(ErrorResponse.of(e.getMessage()));
     }
 
+    @ExceptionHandler(PaymentFailedException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentFailed(PaymentFailedException e) {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of(e.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handlerException(Exception e){
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
