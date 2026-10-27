@@ -1,7 +1,7 @@
 package com.shop.backend.payment.application;
 
 import com.shop.backend.Item.infrastructure.ItemRepository;
-import com.shop.backend.global.exception.OutOfStockException;
+import com.shop.backend.global.exception.PaymentFailedException;
 import com.shop.backend.global.exception.UnauthorizedException;
 import com.shop.backend.order.domain.Order;
 import com.shop.backend.order.domain.OrderItem;
@@ -27,7 +27,6 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final ItemRepository itemRepository;
     private final OrderRepository orderRepository;
-    private final PaymentFailureMonitor paymentFailureMonitor;
 
     @Transactional
     public PaymentResponse ready(Long orderId, PaymentMethod method, String pgProvider, Long userId){
@@ -60,35 +59,38 @@ public class PaymentService {
         if(payment.getStatus() == PaymentStatus.DONE){  //권한 체크 후 멱등성 체크
             return;
         }
-
-        if (payment.getAmount() != approvedAmount){
-            payment.fail("결제 금액 불일치");
-            order.markFailed();
-            paymentFailureMonitor.recordFailure("결제 금액 불일치");
-            throw new IllegalStateException("결제 금액이 주문 금액과 일치 하지 않습니다.");
+        if(payment.getStatus() != PaymentStatus.READY){
+            throw new IllegalStateException("확정할 수 없는 결제 상태입니다: "
+            + payment.getStatus());
         }
 
-        try{
-            for(OrderItem orderItem : order.getOrderItems()){
-                Long itemId = orderItem.getItem().getId();
-                int updated = itemRepository.decreaseStock(itemId, orderItem.getQuantity());
-                if (updated == 0){
-                    if (!itemRepository.existsById(itemId)){
-                        throw new EntityNotFoundException("존재 하지 않는 상품입니다.");
-                    }
-                    throw new OutOfStockException("재고가 부족합니다.");
+        if (payment.getAmount() != approvedAmount){
+            throw new PaymentFailedException("결제 금액이 주문 금액과 일치 하지 않습니다.");
+        }
+
+        for(OrderItem orderItem : order.getOrderItems()){
+            Long itemId = orderItem.getItem().getId();
+            if (itemRepository.decreaseStock(itemId, orderItem.getQuantity()) == 0){
+                if (!itemRepository.existsById(itemId)){
+                    throw new EntityNotFoundException("존재 하지 않는 상품입니다.");
                 }
+                throw new PaymentFailedException("재고가 부족합니다.");
             }
-        } catch(OutOfStockException e){
-            payment.fail("재고 부족");
-            order.markFailed();
-            paymentFailureMonitor.recordFailure("재고 부족");
-            // TODO: 이 시점엔 PG 승인이 이미 났으므로, PG 취소(환불) API 호출이 반드시 필요함
-            throw e;
         }
 
         payment.approve(LocalDateTime.now());
         order.markPaid();
+    }
+
+    @Transactional
+    public void markFailed(String paymentKey, String reason){
+        Payment payment = paymentRepository.findByPaymentKey(paymentKey)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제 입니다."));
+        if(payment.getStatus() != PaymentStatus.READY){   // 그 사이 다른 요청이 처리했으면 건드리지 않음
+            return;
+        }
+        payment.fail(reason);
+        payment.getOrder().markFailed();
     }
 
     @Transactional
