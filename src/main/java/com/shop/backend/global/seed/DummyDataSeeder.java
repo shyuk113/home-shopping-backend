@@ -115,8 +115,8 @@ INSERT INTO seller (name, created_at, updated_at) SELECT '판매자-' || gs, now
         }
 
         long start = System.currentTimeMillis();
-        LocalDateTime now = LocalDateTime.now();
-        long rangeSeconds = Duration.ofDays(days).toSeconds();
+        LocalDateTime startTime = LocalDateTime.now().minusDays(days);
+        long rangeMillis = Duration.ofDays(days).toMillis();
         long inserted = 0;
 
         for (long done = existing; done < orderCount; done += ORDER_CHUNK) {
@@ -127,8 +127,10 @@ INSERT INTO seller (name, created_at, updated_at) SELECT '판매자-' || gs, now
             List<OrderRow> orders = new ArrayList<>(size);
             List<OrderItemRow> orderItems = new ArrayList<>(size * 2);
 
-            for (Long orderId : ids) {
-                LocalDateTime orderTime = now.minusSeconds(random.nextLong(rangeSeconds));
+            for (int j = 0; j < size; j++) {
+                Long orderId = ids.get(j);
+                long offsetMillis = rangeMillis * (done + j) / orderCount;
+                LocalDateTime orderTime = startTime.plus(Duration.ofMillis(offsetMillis));
                 orders.add(new OrderRow(
                         orderId,
                         memberIds.get(random.nextInt(memberIds.size())),
