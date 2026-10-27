@@ -19,38 +19,26 @@ const flowSuccessRate = new Rate('payment_flow_success');
 
 export const options = {
   scenarios: {
-    concurrency_100: {
-      executor: 'shared-iterations',
+    burst_1600: {
+      executor: 'ramping-arrival-rate',   // 초당 요청 수를 기준으로 부하를 줌
       exec: 'paymentFlow',
-      vus: 100,
-      iterations: 100,
-      maxDuration: '2m',
-      startTime: '0s',
+      startRate: 50,
+      timeUnit: '1s',
+      preAllocatedVUs: 300,
+      maxVUs: 1000,
+      stages: [
+        { target: 200, duration: '4s' },   // 초당 50 → 200건으로 증가
+        { target: 200, duration: '6s' },   // 초당 200건 유지
+      ],
       env: { ORDER_OFFSET: '0' },
-    },
-    concurrency_500: {
-      executor: 'shared-iterations',
-      exec: 'paymentFlow',
-      vus: 500,
-      iterations: 500,
-      maxDuration: '2m',
-      startTime: '2m',
-      env: { ORDER_OFFSET: '100' },
-    },
-    concurrency_1000: {
-      executor: 'shared-iterations',
-      exec: 'paymentFlow',
-      vus: 1000,
-      iterations: 1000,
-      maxDuration: '3m',
-      startTime: '4m',
-      env: { ORDER_OFFSET: '600' },
     },
   },
   thresholds: {
-    http_req_duration: ['p(95)<800'],
     http_req_failed: ['rate<0.01'],
     payment_flow_success: ['rate>0.99'],
+    'http_req_duration{step:ready}': ['p(95)<800'],
+    'http_req_duration{step:confirm}': ['p(95)<800'],
+    'http_req_duration{step:get}': ['p(95)<800'],
   },
 };
 
@@ -88,7 +76,10 @@ export function paymentFlow(data) {
     { headers, tags: { step: 'ready' } }
   );
   ok = check(readyRes, { 'ready 200': (r) => r.status === 200 }) && ok;
-
+  if (readyRes.status !== 200) {      // 응답이 없거나 에러면 JSON 파싱 전에 실패로 기록
+    flowSuccessRate.add(false);
+    return;
+  }
   const paymentKey = readyRes.json('paymentKey');
   if (!paymentKey) {
     flowSuccessRate.add(false);
@@ -96,11 +87,11 @@ export function paymentFlow(data) {
   }
 
   const confirmRes = http.post(
-    `${BASE_URL}/api/payments/${paymentKey}/comfirm`,
+    `${BASE_URL}/api/payments/${paymentKey}/confirm`,
     JSON.stringify({ amount: 10000 }),
     { headers, tags: { step: 'confirm' } }
   );
-  ok = check(confirmRes, { 'confirm 200': (r) => r.status === 200 }) && ok;
+  ok = check(confirmRes, { 'confirm 204': (r) => r.status === 204 }) && ok;
 
   const getRes = http.get(`${BASE_URL}/api/payments/${paymentKey}`, {
     headers,
