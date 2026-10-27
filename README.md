@@ -34,7 +34,7 @@
 - **주문**: 주문 생성(`PENDING`), 목록·단건 조회, 취소(결제 완료 건은 재고 복구)
 - **결제**: 결제 요청 → 승인 확정(**이 시점에 재고 차감**) → 조회 / 취소, Redis 기반 결제 실패 급증 감지
 - **쿠폰**: 쿠폰 생성, Redis Lua + Kafka 기반 선착순 발급, 내 쿠폰 조회
-- **일별 매출 집계 배치**: Spring Batch로 주문 원본을 판매자 × 일 단위로 집계해 `daily_sales_summary`에 저장 (판매자 대시보드용)
+- **일별 매출 집계 배치**: Spring Batch로 주문 원본을 판매자 × 일 단위로 집계해 `daily_sales_summary`에 저장 (판매자 대시보드용). Reader 3종 선택, 날짜 기반 Partitioning, 실패 파티션 단위 재시작 지원
 - **대용량 더미 데이터 시더**: 주문 1,000만 / 주문상품 2,000만 건을 JDBC batch insert로 적재 (`local` 프로필 전용)
 
 ---
@@ -58,7 +58,7 @@ com.shop.backend
 ├── sales
 │   ├── domain          DailySalesSummary (조회 전용 엔티티)
 │   ├── infrastructure  DailySalesSummaryRepository
-│   └── batch           일별 매출 집계 Job (Reader / Processor / Writer)
+│   └── batch           일별 매출 집계 Job (Reader 3종 / Processor / Writer, 날짜 Partitioner)
 ├── common      BaseEntity, Address 등 공통 임베디드 타입
 └── global
     ├── config      Security, Redis, Kafka 에러 핸들러, Lua 스크립트 빈
@@ -104,10 +104,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    subgraph Job["dailySalesSummaryJob (from, to, chunkSize)"]
-        S1["deleteDailySalesSummaryStep<br/>기간 내 기존 집계 삭제"] --> S2
-        subgraph S2["aggregateDailySalesStep (chunk)"]
-            R["Reader<br/>JdbcCursorItemReader<br/>주문 × 판매자 행"] --> P["Processor<br/>PAID → 매출<br/>CANCEL → 취소"] --> W["Writer<br/>chunk 내 사전 합산 후<br/>ON CONFLICT 누적 upsert"]
+    subgraph Job["dailySalesSummaryJob (from, to, reader, chunkSize, gridSize)"]
+        S1["deleteDailySalesSummaryStep<br/>기간 내 기존 집계 삭제"] --> M["aggregateDailySalesManagerStep<br/>기간을 날짜 단위로 gridSize개 분할"]
+        M --> S2
+        subgraph S2["aggregateDailySalesStep:partitionNN (파티션별 스레드, chunk)"]
+            R["Reader<br/>Cursor / JPA / No-Offset<br/>주문 × 판매자 행"] --> P["Processor<br/>PAID → 매출<br/>CANCEL → 취소"] --> W["Writer<br/>chunk 내 사전 합산 후<br/>ON CONFLICT 누적 upsert"]
         end
     end
     O[("orders<br/>order_item<br/>item")] --> R
@@ -115,7 +116,8 @@ flowchart LR
 ```
 
 - **멱등성**: Writer가 누적 upsert이므로, 첫 Step에서 대상 기간 집계를 지우고 다시 쌓아 같은 기간을 몇 번 돌려도 결과가 같음
-- **재시작**: 실행 이력과 진행 위치가 `BATCH_*` 메타데이터에 남아, 실패한 Job을 같은 파라미터로 다시 실행하면 완료된 Step은 건너뛰고 실패 지점부터 이어서 처리
+- **재시작**: 실행 이력과 진행 위치가 `BATCH_*` 메타데이터에 남아, 실패한 Job을 같은 파라미터로 다시 실행하면 완료된 Step과 파티션은 건너뛰고 실패한 파티션만 마지막 커밋 지점부터 이어서 처리
+- **Partitioning**: 파티션을 날짜 단위로 나눠 파티션끼리 같은 (판매자, 날짜) 키를 건드리지 않으므로 병렬 upsert 충돌이 없음
 - **Reader 단위**: "주문 1건이 판매자 1명에게 만든 매출" 단위로 읽어, 한 주문에 같은 판매자 상품이 여러 개여도 주문 수가 중복 집계되지 않음
 
 ---
@@ -167,18 +169,24 @@ flowchart LR
 | `ORDER BY 날짜, 판매자, 주문ID` | ① 같은 집계 키가 연달아 나와 chunk 내 사전 합산 효율이 높아지고 ② 정렬이 항상 같아 재시작 시 커서 위치가 재현된다 |
 | Writer에서 키별로 먼저 합친 뒤 upsert | 한 배치에 같은 키가 여러 번 들어가면 multi-row INSERT에서 `ON CONFLICT ... cannot affect row a second time` 에러가 난다 |
 | 집계 테이블에 FK 없음, 엔티티는 조회 전용 | 원본에서 파생된 데이터라 FK 이득이 없고 대량 쓰기 비용만 늘어난다. 쓰기는 배치(JDBC)만 담당 |
+| No-Offset Reader 직접 구현 | `JdbcPagingItemReader`는 GROUP BY 쿼리를 서브쿼리로 감싸 집계 **후에** 키를 거른다. 키 조건을 집계 전 WHERE에 넣기 위해 직접 구현했고, 마지막으로 반환한 키를 `ExecutionContext`에 저장해 재시작을 지원한다 |
+| Partition Worker Step을 빈이 아닌 일반 객체로 생성 | `@JobScope` 프록시로 두면 파티션 스레드에는 Job 컨텍스트가 없어 실제 Step을 찾지 못한다. Reader는 `@StepScope`라 파티션 스레드마다 따로 생성된다 |
 
-**성능 개선: Writer 병목 제거** (9월 1개월, 151만 행, chunk 1,000)
+### 3. 배치 성능 실험 (Step 2)
 
-처리 시간의 94%가 Writer upsert였습니다(Reader 쿼리 단독 14.1s / Job 238.9s). 주문 ID 순으로 읽으면 chunk 안에서 같은 (판매자, 날짜)가 거의 겹치지 않아 행마다 UPDATE가 발생했고, 정렬 키를 집계 키 순서로 바꿔 해결했습니다.
+인덱스가 없는 상태(PK만 존재)에서 측정했습니다. 조건별 3회를 번갈아 실행해 중앙값을 사용했고, 모든 실험에서 Job 결과를 원본 SQL 직접 집계와 양방향 `EXCEPT`로 비교해 불일치 0건을 확인했습니다.
 
-| 지표 | 변경 전 (`ORDER BY 주문ID`) | 변경 후 (`ORDER BY 날짜, 판매자, 주문ID`) |
-|---|---|---|
-| Job 소요 시간 | 238.9s | **89.8s (2.7배 단축)** |
-| summary UPDATE 횟수 | 1,458,538 | **1,489 (약 980배 감소)** |
-| summary 테이블 크기 | 177MB | 7.7MB |
+| 실험 | 조건 | 결과 | 결론 |
+|---|---|---|---|
+| Writer 병목 | 9월 151만 행, chunk 1,000 | 238.9s → **89.8s**, UPDATE 1,458,538 → **1,489**회 | 처리 시간의 94%가 Writer였음. Reader 정렬 키를 집계 키 순으로 바꿔 chunk 내 사전 합산 효율 개선 |
+| Reader 3종 | 9/15 하루 5만 행, 51페이지 | Cursor **9.2s** / JPA OFFSET 82.0s / No-Offset 76.2s | 페이징은 페이지마다 풀스캔을 반복(페이지당 1.6s)해 약 9배 느림 → Cursor 채택 |
+| Chunk size | 9월 151만 행, Cursor | 100: 238.3s / 1,000: 53.0s / 5,000: **30.4s** | 커밋 1회당 약 15ms 고정 비용 → 기본값 5,000 (7.8배 단축) |
+| Partitioning | 9월 151만 행, chunk 5,000 | gridSize 1: 24.6s / 2: 22.5s / 4: 28.2s / 8: **15.3s** | 최대 1.6배. 파티션 시간의 64~88%가 파티션마다 중복되는 풀스캔 → 기본값 1 유지 |
+| 실패 후 재시작 | gridSize 4, 9/5에서 실패 주입 | 실패 파티션만 커밋된 20만 행 다음부터 재처리 (200,000 + 204,870 = 파티션 전체) | 누락·중복 0, 최종 집계 원본과 일치 |
 
-**정확성 검증**: 원본 SQL 직접 집계와 30,000행(판매자 1,000 × 30일)을 양방향 `EXCEPT`로 비교해 불일치 0건. 같은 기간 재실행 시에도 결과 동일.
+**공통 결론**: Reader·Partitioning 모두 병목이 `orders.order_time` 인덱스 부재로 인한 **전체 테이블 스캔**으로 수렴했습니다. 다음 단계에서 인덱스를 설계한 뒤 두 실험을 다시 측정합니다.
+
+원본 측정값, 실행 계획, 파티션별 분석, 재현 명령은 **[Step 2 실험 기록](./docs/experiments/step2-spring-batch.md)**에 있습니다.
 
 ---
 
@@ -325,15 +333,28 @@ export JWT_SECRET=$(openssl rand -base64 64)
 ./gradlew bootRun --args='--spring.profiles.active=local,bench --spring.batch.job.enabled=true --spring.batch.job.name=dailySalesSummaryJob from=2026-09-01,java.time.LocalDate to=2026-09-30,java.time.LocalDate run=1,java.lang.Long'
 ```
 
-| 파라미터 | 필수 | 설명 |
+| 파라미터 | 기본값 | 설명 |
 |---|---|---|
-| `from`, `to` | ✅ | 집계 기간 (양 끝 포함). 타입을 붙여 `LocalDate`로 전달 |
-| `chunkSize` | | chunk 크기 (기본 1000) |
+| `from`, `to` | (필수) | 집계 기간 (양 끝 포함). 타입을 붙여 `LocalDate`로 전달 |
+| `reader` | `cursor` | `cursor` / `jpa` / `nooffset` |
+| `chunkSize` | 5000 | chunk 크기. 페이징 Reader는 페이지 크기도 같음 |
+| `gridSize` | 1 | 파티션 수 (1 = 단일 스레드) |
 | `run` | | 같은 기간을 다시 집계할 때 구분용 값 |
+| `failOnDate` | | 재시작 시연용. 해당 날짜 데이터에서 의도적으로 실패 (non-identifying으로 전달) |
 
 - 같은 파라미터로 **성공한** Job은 다시 실행되지 않습니다(`JobInstanceAlreadyCompleteException`). 반복 실행 시 `run` 값을 바꿉니다.
 - **실패한** Job은 같은 파라미터로 다시 실행하면 재시작됩니다.
 - 실행 결과는 로그(`[batch] job=... elapsed=... ms`)와 `BATCH_JOB_EXECUTION`, `BATCH_STEP_EXECUTION` 테이블에서 확인합니다.
+
+**재시작 시연**: `failOnDate`를 붙여 실패시킨 뒤, 이 값만 빼고 나머지 인자는 그대로 다시 실행합니다. `,false`가 non-identifying 표시라서, 이 값을 빼도 같은 Job Instance의 재시작으로 처리됩니다.
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local,bench --spring.batch.job.enabled=true --spring.batch.job.name=dailySalesSummaryJob from=2026-09-01,java.time.LocalDate to=2026-09-30,java.time.LocalDate gridSize=4,java.lang.Long run=2,java.lang.Long failOnDate=2026-09-05,java.lang.String,false'
+```
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local,bench --spring.batch.job.enabled=true --spring.batch.job.name=dailySalesSummaryJob from=2026-09-01,java.time.LocalDate to=2026-09-30,java.time.LocalDate gridSize=4,java.lang.Long run=2,java.lang.Long'
+```
 
 ### 운영 배포
 
@@ -390,17 +411,23 @@ k6 run loadtest/payment-scenario.js
 | 지연 이중 삭제가 stale 캐시를 지우지 못함 | 2차 evict를 `TimeUnit.MICROSECONDS`로 예약해 500ms가 아닌 500μs 뒤에 실행 | `MILLISECONDS`로 수정 |
 | 집계 배치 시간의 94%가 Writer에 소요 | 주문 ID 순으로 읽어 chunk 내 같은 집계 키가 거의 없음 → 행마다 UPDATE (146만 회), 테이블 177MB로 부풀음 | Reader 정렬 키를 집계 키 순으로 변경 → UPDATE 1,489회, 238s → 90s |
 | PostgreSQL 커서 Reader가 메모리를 과다 사용할 위험 | 드라이버가 autoCommit 상태에서는 결과 전체를 한 번에 가져옴 | `connectionAutoCommit(false)` + `fetchSize` 설정 |
+| Partitioning 적용 시 Worker Step을 찾지 못함 | `@JobScope` 프록시는 Job 컨텍스트를 스레드별로 찾는데, 파티션 실행 스레드에는 Job 컨텍스트가 없음 | Worker Step을 빈이 아닌 일반 객체로 Manager 안에서 생성 |
+| 8개로 나눠도 Partitioning이 1.6배밖에 빨라지지 않음 | 인덱스가 없어 파티션마다 전체 테이블 스캔을 중복 수행 (파티션 시간의 64~88%) | 원인 확인 후 기본값 `gridSize=1` 유지, 인덱스 설계를 우선 과제로 재설정 |
+| 애플리케이션 기동 실패 (`Could not resolve placeholder 'cors.allowed.origins'`) | YAML 키는 `allowed-origins`인데 `@Value`는 `allowed.origins`로 조회. `@Value`는 relaxed binding을 하지 않음 | `@Value("${cors.allowed-origins}")`로 키 일치 |
 
 ---
 
-## 진행 중인 작업
+## 진행 상황
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | 대용량 데이터 구축 | 주문 1,000만 건 적재, batch insert 최적화 실험 | ✅ 완료 |
 | Spring Batch 집계 | 일별 매출 집계 Job, Writer 병목 개선 | ✅ 완료 |
-| | Reader 비교 (JdbcCursor / JpaPaging / No-Offset) | 🔄 진행 중 |
-| | Chunk size 100 / 1,000 / 5,000 비교, Partitioning 병렬 처리 | ⏳ 예정 |
-| | chunk 중간 실패 → 재시작 시연 | ⏳ 예정 |
+| | Reader 비교 (JdbcCursor / JpaPaging / No-Offset) | ✅ 완료 |
+| | Chunk size 100 / 1,000 / 5,000 비교 | ✅ 완료 |
+| | Partitioning 병렬 처리 | ✅ 완료 |
+| | 실패 후 재시작 시연 | ✅ 완료 |
+| 쿼리 튜닝 | `orders(order_time)`, `order_item(order_id)` 인덱스 설계, `EXPLAIN ANALYZE` 전후 비교 → Reader·Partitioning 재측정 | ⏳ 다음 |
 | 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 예정 |
-| 쿼리 튜닝 | `EXPLAIN ANALYZE` 전후 비교 (현재 `orders.order_time`, `order_item.order_id` 인덱스 없음, 9월 Reader 쿼리 14.1s Seq Scan) | ⏳ 예정 |
+
+**쿼리 튜닝 전 기준값** (PK 인덱스만 존재): 9월 Reader 쿼리 단독 14.1s, 하루 페이지 쿼리 1.6s (orders·order_item Parallel Seq Scan), 9월 원본 직접 집계 31.8s
