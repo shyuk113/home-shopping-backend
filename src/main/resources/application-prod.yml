@@ -26,6 +26,8 @@ spring:
     init:
       # data-postgresql.sql 은 부하테스트용 시드 데이터라 운영에서는 절대 실행하면 안 됨
       mode: never
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
   data:
     redis:
       host: ${REDIS_HOST:redis}
