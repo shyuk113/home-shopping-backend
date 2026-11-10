@@ -11,8 +11,12 @@ import com.shop.backend.order.domain.OrderStatus;
 import com.shop.backend.order.infrastructure.OrderRepository;
 import com.shop.backend.order.application.dto.response.OrderResponse;
 import jakarta.persistence.EntityNotFoundException;
+
 import java.util.List;
+
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service
@@ -42,11 +46,36 @@ public class OrderService {
         return order.getId();
     }
 
-    @Transactional(readOnly = true) //회원의 전체 주문 목록
+    //기존 N+1 문제
+    /*@Transactional(readOnly = true) //회원의 전체 주문 목록
     public List<OrderResponse> getOrders(Long memberId){
         return orderRepository.findByMemberId(memberId).stream()
             .map(OrderResponse::from)
             .toList();
+    }*/
+
+    //fetch join 활용
+    /*@Transactional(readOnly = true)
+    public List<OrderResponse> getOrders(Long memberId){
+        return orderRepository.findWithItemsByMemberId(memberId).stream()
+                .map(OrderResponse::from)
+                .toList();
+    }*/
+
+    //Dto 직접 조회
+    /*@Transactional(readOnly = true)
+    public List<OrderResponse> getOrders(Long memberId){
+        Map<Long, List<OrderItemRow>> byOrder = orderRepository.findOrderRowsByMemberId(memberId).stream()
+                .collect(Collectors.groupingBy(OrderItemRow::orderId, LinkedHashMap::new, Collectors.toList()));
+        return byOrder.values().stream()
+                .map(OrderResponse::fromRows)
+                .toList();
+    }*/
+
+    @Transactional(readOnly = true) // 회원의 주문 목록 (페이지 단위)
+    public Page<OrderResponse> getOrders(Long memberId, Pageable pageable){
+        return orderRepository.findByMemberId(memberId, pageable)
+                .map(OrderResponse::from);
     }
 
     @Transactional(readOnly = true) // 단건 조회
