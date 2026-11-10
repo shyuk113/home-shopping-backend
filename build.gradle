@@ -54,4 +54,10 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 테스트 전용 더미 시크릿 (HS256은 32바이트 이상 필요). 실제 값이 환경에 있으면 그것을 사용
+	environment 'JWT_SECRET', System.getenv('JWT_SECRET') ?: 'test-only-jwt-secret-key-0123456789abcdef'
+	// ./gradlew test -Pbench 로 실행할 때만 대용량 측정 테스트 활성화
+	if (project.hasProperty('bench')) {
+		systemProperty 'bench', 'true'
+	}
 }
