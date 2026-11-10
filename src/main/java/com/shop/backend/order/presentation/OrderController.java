@@ -7,6 +7,10 @@ import com.shop.backend.order.application.dto.response.OrderResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.PagedModel;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -38,8 +42,10 @@ public class OrderController {
     }
 
     @GetMapping //주문 조회
-    public ResponseEntity<List<OrderResponse>> getOrders(@AuthenticationPrincipal Member member) {
-        return ResponseEntity.ok(orderService.getOrders(member.getId()));
+    public ResponseEntity<PagedModel<OrderResponse>> getOrders(@AuthenticationPrincipal Member member,
+                                                               @PageableDefault(size = 20, sort = "orderTime", direction = Sort.Direction.DESC)
+                                                               Pageable pageable) {
+        return ResponseEntity.ok(new PagedModel<>(orderService.getOrders(member.getId(), pageable)));
     }
 
     @GetMapping("/{id}") //주문 상세 조회

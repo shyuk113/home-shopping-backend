@@ -6,6 +6,9 @@ spring:
     hibernate:
       ddl-auto: create
     defer-datasource-initialization: true
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100    # 지연 로딩을 IN(= any) 한 번으로 묶음 (N+1 완화)
   sql:
     init:
       mode: always
@@ -15,6 +18,9 @@ spring:
     redis:
       host: localhost
       port: 6379
+    web:
+      pageable:
+        max-page-size: 100               # size 파라미터 상한 (전체 조회 방지)
 
 # spring과 같은 레벨에 배치 (들여쓰기 주의!)
 jwt:
