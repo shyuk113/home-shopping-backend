@@ -219,6 +219,28 @@ flowchart LR
 
 전체 측정값, 실행 계획, 재현 SQL은 **[Step 4 실험 기록](./docs/experiments/step4-query-tuning.md)**에 있습니다.
 
+### 5. 주문 목록 N+1 해결
+
+인덱스를 설계한 뒤에도 회원 주문 목록 API는 **요청 한 번에 쿼리 28,639개, 19.3초**가 걸렸습니다. 주문마다 주문상품을, 주문상품마다 상품을 지연 로딩하는 N+1이었고, 쿼리 하나는 0.68ms로 이미 빨라 인덱스가 아니라 **왕복 횟수**가 문제였습니다. 1,000만 건 데이터에서 같은 측정 코드로 대안을 비교했습니다. (회원 1000, 주문 10,128건, 중앙값)
+
+| 방식 | 반환 건수 | 쿼리 수 | 응답 시간 |
+|---|---|---|---|
+| 기존 (지연 로딩) | 10,128 | 28,639 | 19,347ms |
+| `default_batch_fetch_size` 100 / 1000 | 10,128 | 316 / 33 | 708 / 467ms |
+| fetch join | 10,128 | 1 | 384ms |
+| DTO 직접 조회 | 10,128 | 1 | 173ms |
+| **페이징 20건 + batch 100 (채택)** | 20 | **4** | **20ms** (약 970배) |
+
+| 판단 | 근거 |
+|---|---|
+| 쿼리를 1개로 줄여도 끝나지 않음 | 쿼리 수가 같은 fetch join(384ms)과 DTO 조회(173ms)의 차이는 엔티티 4만 개 생성 비용. 남은 173ms는 1만 건 자체의 전송·변환 비용이라 **반환량을 줄이는 페이징**만 해결 가능 |
+| DTO 조회 대신 batch size + 페이징 | 20건이면 엔티티 생성 비용이 1ms 미만이 되어 DTO 조회의 이점이 사라짐. 설정 한 줄로 다른 API의 지연 로딩에도 적용되고 표준 `Pageable`을 그대로 사용 |
+| fetch join 미채택 | 컬렉션 fetch join은 페이징 시 전체를 메모리에 올린 뒤 자름 (`HHH90003004`) |
+| 커서 페이징 미도입 | 마지막 페이지(OFFSET 10,120)도 12ms. `(member_id, order_time)` 인덱스로 회원 구간만 읽어 OFFSET 비용이 작음 |
+| batch 쿼리 수가 단순 나눗셈과 다름 | 배치는 그 시점에 영속성 컨텍스트에 있는 프록시로만 구성됨. batch 1000에서 이 모델로 계산한 33개가 실측과 일치 |
+
+전체 측정값, 쿼리 분해, 대안별 코드는 **[주문 목록 N+1 실험 기록](./docs/experiments/order-list-n-plus-one.md)**에 있습니다.
+
 ---
 
 ## API 명세
@@ -258,7 +280,7 @@ flowchart LR
 | Method | URL | 설명 |
 |---|---|---|
 | POST | /api/orders | 주문 생성 (`PENDING`) |
-| GET | /api/orders?memberId={id} | 회원 주문 목록 조회 |
+| GET | /api/orders?page={n}&size={n}&sort={field,dir} | 내 주문 목록 조회 (기본 20건, 최근 주문순, size 최대 100) |
 | GET | /api/orders/{id} | 주문 단건 조회 |
 | DELETE | /api/orders/{id} | 주문 취소 (결제 완료 건만 재고 복구) |
 
@@ -412,6 +434,13 @@ EC2 + Nginx + HTTPS 구성 절차는 [DEPLOY.md](./DEPLOY.md)를 참고하세요
 | `CouponServiceTest` | 수량 100장 쿠폰에 500명 동시 발급 시 Redis 판정 성공 100 / 소진 400, Kafka Consumer 처리 후 DB 저장 100건 (Redis·Kafka 필요) |
 | `ItemServiceTest` | `@CachePut` 경쟁 상태 재현, 지연 삭제(Delayed Double Delete)로 오래된 캐시 제거 |
 | `PaymentFailureMonitorTest` | 결제 실패 임계치 감지 및 알림 쿨다운 |
+| `OrderQueryCountTest` | 주문 20건(주문마다 다른 상품) 목록 조회의 쿼리 수가 4개 이하인지 (N+1 회귀 방지, 수정 전 41개) |
+| `OrderQueryBenchTest` | 1,000만 건 DB에서 주문 목록 페이지별 쿼리 수·응답 시간 측정. `-Pbench`로 실행할 때만 동작 |
+
+```bash
+# 대용량 측정 (Docker PostgreSQL에 1,000만 건 적재 후)
+./gradlew test --tests "com.shop.backend.order.application.OrderQueryBenchTest" -Pbench --rerun-tasks -i
+```
 
 > `CouponServiceTest`는 로컬 애플리케이션과 같은 Kafka consumer group을 사용하므로, 애플리케이션을 끈 상태에서 실행합니다.
 
@@ -487,6 +516,8 @@ k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.j
 | 로그인한 사용자가 다른 회원의 주문을 생성·조회·취소할 수 있음 (IDOR) | 주문 API가 `memberId`를 요청 본문·파라미터로 받고 소유자 확인이 없음 | 인증 정보로 회원 식별, `findByIdAndMemberId`로 조회 단계에서 소유자 조건 적용. 타인 주문은 404로 존재 여부도 숨김 |
 | 결제 API는 항상 권한 오류, 상품 관리 API는 예외 | JWT 필터는 principal에 `Member`를 넣는데 `@AuthenticationPrincipal Long`으로 받아, 타입 불일치 시 Spring Security가 예외 없이 `null`을 주입 | 파라미터 타입을 `Member`로 통일 |
 | k6 부하 테스트에서 실패율 26% | 실패 전부가 TCP 연결 거부. Windows의 연결 대기열 상한(약 200)을 넘는 동시 연결 버스트 | 도착률 기반 부하 모델(`ramping-arrival-rate`)로 변경 → 실패율 0% |
+| 회원 주문 목록 조회 1회에 쿼리 28,639개, 19.3초 | 주문마다 `orderItems`, 주문상품마다 `item`을 지연 로딩(N+1)하고, 회원의 주문 약 1만 건을 한 번에 반환 | 페이징(20건) + `default_batch_fetch_size: 100` → 쿼리 4개, 20ms. 쿼리 수 회귀 테스트 추가 |
+| 테스트 실행 시 `Could not resolve placeholder 'JWT_SECRET'` | 시크릿을 환경변수로만 주입해, IDE·Gradle에서 `.env` 없이 테스트하면 컨텍스트 로딩 실패 | Gradle `test` 태스크에 테스트 전용 기본값 설정 (환경변수가 있으면 그 값 우선) |
 | 애플리케이션 기동 실패 (`Could not resolve placeholder 'cors.allowed.origins'`) | YAML 키는 `allowed-origins`인데 `@Value`는 `allowed.origins`로 조회. `@Value`는 relaxed binding을 하지 않음 | `@Value("${cors.allowed-origins}")`로 키 일치 |
 
 ---
@@ -503,10 +534,11 @@ k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.j
 | | 실패 후 재시작 시연 | ✅ 완료 |
 | 쿼리 튜닝 | 인덱스 설계, `EXPLAIN ANALYZE` 전후 비교, 커버링·복합 인덱스 순서·correlation 검증 | ✅ 완료 |
 | | Reader·Partitioning 재측정 (배치 2라운드) | ✅ 완료 |
+| | 주문 목록 N+1: batch size / fetch join / DTO 조회 / 페이징 비교 | ✅ 완료 |
 | 코드 점검 | 주문 API IDOR, `@AuthenticationPrincipal` 타입 불일치, 결제 실패 상태 롤백 수정 및 테스트 검증 | ✅ 완료 |
 | 결제 부하 테스트 재측정 | 스크립트 버그 수정, 연결 거부·포화 원인 분석, 정합성 검증 | ✅ 1·2회차 완료 |
 | | 처리 한계 아래 일정 부하 측정, 병목 후보(커넥션 풀·OSIV·JWT 필터 조회) 검증 | ⏳ 다음 |
 | 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 예정 |
 | | 파티션 수와 동시 실행 수 분리 (하루 단위 파티션 + 동시 실행 제한) | ⏳ 예정 |
 
-**쿼리 튜닝 결과**: 배치 Reader 쿼리 2.4s → 0.38s, 월 집계 배치 24.6s → 5.9s, 회원 주문 조회 266ms → 18.5ms
+**쿼리 튜닝 결과**: 배치 Reader 쿼리 2.4s → 0.38s, 월 집계 배치 24.6s → 5.9s, 회원 주문 조회 266ms → 18.5ms, 주문 목록 API 쿼리 28,639개 · 19.3s → 4개 · 20ms
