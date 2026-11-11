@@ -1,5 +1,6 @@
 package com.shop.backend.payment.application;
 
+import com.shop.backend.Item.application.stock.StockDecreaser;
 import com.shop.backend.Item.infrastructure.ItemRepository;
 import com.shop.backend.global.exception.PaymentFailedException;
 import com.shop.backend.global.exception.UnauthorizedException;
@@ -27,6 +28,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final ItemRepository itemRepository;
     private final OrderRepository orderRepository;
+    private final StockDecreaser  stockDecreaser;
 
     @Transactional
     public PaymentResponse ready(Long orderId, PaymentMethod method, String pgProvider, Long userId){
@@ -70,10 +72,7 @@ public class PaymentService {
 
         for(OrderItem orderItem : order.getOrderItems()){
             Long itemId = orderItem.getItem().getId();
-            if (itemRepository.decreaseStock(itemId, orderItem.getQuantity()) == 0){
-                if (!itemRepository.existsById(itemId)){
-                    throw new EntityNotFoundException("존재 하지 않는 상품입니다.");
-                }
+            if(!stockDecreaser.decrease(orderItem.getItem().getId(), orderItem.getQuantity())){
                 throw new PaymentFailedException("재고가 부족합니다.");
             }
         }

@@ -3,12 +3,16 @@ package com.shop.backend.Item.infrastructure;
 
 import com.shop.backend.Item.domain.Item;
 import com.shop.backend.Item.domain.ItemCategory;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import java.util.Optional;
 
 public interface ItemRepository extends JpaRepository<Item, Long> {
 
@@ -23,4 +27,8 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
     int decreaseStock(@Param("id") Long id, @Param("quantity") int quantity);
 
     Page<Item> findByCategory(Pageable pageable, ItemCategory category);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Item i where i.id = :id")
+    Optional<Item> findByIdForUpdate(@Param("id") Long id);
 }

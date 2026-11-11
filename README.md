@@ -129,10 +129,33 @@ flowchart LR
 | 선착순 쿠폰 판정 | Redis Lua Script (`HMGET` → `SISMEMBER` → `SCARD` → `SADD`) | 기간·중복·수량 체크와 발급 기록을 하나의 원자 연산으로 처리. 이전의 `SET + INCR` 분리 방식에서 생기던 보상 로직과 경합 구간 제거 |
 | 쿠폰 DB 반영 | Kafka 비동기 처리 + 유니크 제약 | 요청 응답 시간과 DB 쓰기를 분리, 재전달 메시지는 유니크 제약으로 무시 |
 | 쿠폰 발급 통계(`issuedQuantity`) | `UPDATE ... SET issuedQuantity = issuedQuantity + 1` | Dirty Checking 방식의 Lost Update 방지 |
-| 재고 (결제 확정 시) | `UPDATE ... SET quantity = quantity - :qty WHERE id = :id AND quantity >= :qty` | 비관적 락 대기 대신 DB가 체크와 차감을 원자적으로 처리. 영향받은 row 수(0/1)로 성공 여부 판단 |
+| 재고 (결제 확정 시) | `UPDATE ... SET quantity = quantity - :qty WHERE id = :id AND quantity >= :qty` | 검사와 차감을 한 문장으로 처리해 조회 왕복 없이 행 락을 짧게 잡음. 재고 0 이후의 품절 판정은 락 없이 끝남. 영향받은 row 수(0/1)로 성공 여부 판단 ([방식 비교](#재고-동시성-방식-비교)) |
 | 상품 캐시 | 수정 커밋 이후 지연 삭제(Delayed Double Delete, 500ms) | 커밋 전 캐시 삭제 → 다른 요청이 옛 값을 다시 캐싱하는 문제 완화 |
 
 **재고 차감 시점**: 주문 생성이 아니라 **결제 확정(`PaymentService.confirm()`)** 시점입니다. 주문 생성 시에는 `PENDING` 상태만 만들고 재고는 소프트 체크만 합니다.
+
+### 재고 동시성 방식 비교
+
+재고 100개 상품 하나에 결제 확정 300건을 동시에 보내고(PostgreSQL, 커넥션 풀 50), 재고 차감 방식만 바꿔 측정했습니다. (각 1회 측정)
+
+| 방식 | 정합성 | 전체 시간 | 품절 응답 p50 |
+|---|---|---|---|
+| 락 없음 (재현용) | ❌ 300건 성공, 재고는 3개만 감소 (Lost Update) | 1,779ms | – |
+| 비관적 락 | ✅ | 2,161ms | 2,137ms |
+| 원자적 UPDATE | ✅ | 1,968ms | 1,926ms |
+| 낙관적 락 + 재시도 | ✅ 충돌 1,291회 | 3,042ms | 3,024ms |
+| **Redis 문지기 + 원자적 UPDATE** | ✅ Redis·DB 재고 일치 | **1,233ms** | **1,006ms** |
+
+| 판단 | 근거 |
+|---|---|
+| 락 방식만 바꿔서는 차이가 작음 (9%) | 원자적 UPDATE도 행 락을 잡음. 정확한 방식은 모두 한 행에 건당 약 10ms씩 줄을 서서 처리량 상한이 초당 약 100건 |
+| 원자적 UPDATE 유지 | 성공 경로는 비관적 락과 같고, 재고 0 이후 품절 판정을 락 없이 끝냄 |
+| 낙관적 락 미채택 | 충돌마다 결제 확정 트랜잭션 전체를 재실행해 1.5배 느림. 충돌이 드문 곳에 맞는 방식 |
+| 진짜 비용은 품절 요청의 대기 | 품절될 요청도 자기 차례에 UPDATE해 봐야 알아서, 늦게 온 200명이 2초 뒤 품절 응답을 받음 |
+| Redis로 입장 제한 | 재고만큼만 DB로 보내 전체 37% 단축. 최종 판정은 DB가 해 Redis가 어긋나도 초과 판매 없음 |
+| 남은 병목은 커넥션 풀 | 문지기가 결제 확정 트랜잭션 안에 있어 품절 건도 커넥션을 두 번 사용 → 문지기는 주문·결제 준비 단계 앞이 맞음 (후속 과제) |
+
+측정 코드, 방식별 구현, 지연 분포 분석은 **[재고 동시성 실험 기록](./docs/experiments/stock-concurrency.md)**에 있습니다.
 
 ---
 
@@ -436,10 +459,14 @@ EC2 + Nginx + HTTPS 구성 절차는 [DEPLOY.md](./DEPLOY.md)를 참고하세요
 | `PaymentFailureMonitorTest` | 결제 실패 임계치 감지 및 알림 쿨다운 |
 | `OrderQueryCountTest` | 주문 20건(주문마다 다른 상품) 목록 조회의 쿼리 수가 4개 이하인지 (N+1 회귀 방지, 수정 전 41개) |
 | `OrderQueryBenchTest` | 1,000만 건 DB에서 주문 목록 페이지별 쿼리 수·응답 시간 측정. `-Pbench`로 실행할 때만 동작 |
+| `StockStrategyBenchTest` | 재고 100개 상품에 결제 확정 300건 동시 실행. 재고 차감 방식별 초과 판매·Lost Update·지연 측정 (`shop_k6`). `-PstockStrategy`로 실행할 때만 동작 |
 
 ```bash
 # 대용량 측정 (Docker PostgreSQL에 1,000만 건 적재 후)
 ./gradlew test --tests "com.shop.backend.order.application.OrderQueryBenchTest" -Pbench --rerun-tasks -i
+
+# 재고 차감 방식 비교 (naive | pessimistic | atomic | optimistic | redis-gate)
+./gradlew test --tests "*StockStrategyBenchTest" -PstockStrategy=atomic --rerun-tasks -i
 ```
 
 > `CouponServiceTest`는 로컬 애플리케이션과 같은 Kafka consumer group을 사용하므로, 애플리케이션을 끈 상태에서 실행합니다.
@@ -517,6 +544,8 @@ k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.j
 | 결제 API는 항상 권한 오류, 상품 관리 API는 예외 | JWT 필터는 principal에 `Member`를 넣는데 `@AuthenticationPrincipal Long`으로 받아, 타입 불일치 시 Spring Security가 예외 없이 `null`을 주입 | 파라미터 타입을 `Member`로 통일 |
 | k6 부하 테스트에서 실패율 26% | 실패 전부가 TCP 연결 거부. Windows의 연결 대기열 상한(약 200)을 넘는 동시 연결 버스트 | 도착률 기반 부하 모델(`ramping-arrival-rate`)로 변경 → 실패율 0% |
 | 회원 주문 목록 조회 1회에 쿼리 28,639개, 19.3초 | 주문마다 `orderItems`, 주문상품마다 `item`을 지연 로딩(N+1)하고, 회원의 주문 약 1만 건을 한 번에 반환 | 페이징(20건) + `default_batch_fetch_size: 100` → 쿼리 4개, 20ms. 쿼리 수 회귀 테스트 추가 |
+| 락 없이 재고를 차감하면 300건이 모두 성공하는데 재고는 100 → 97 | 변경 감지가 "읽은 값 − 1"을 절대값으로 덮어써, 동시에 100을 읽은 트랜잭션들의 차감이 사라짐 (Lost Update). 재고 값만 보면 이상이 드러나지 않음 | 조건부 원자적 UPDATE로 검사와 차감을 한 문장에서 처리 (방식별 비교 실험으로 검증) |
+| Redis 재고 문지기가 효과 없이 모든 요청을 DB로 보냄 (설계 검토 중 발견) | 커밋 여부 비교에 `jakarta.transaction.Status.STATUS_COMMITTED`(값 3)를 자동 import. Spring `afterCompletion`은 커밋 시 0을 넘겨 항상 "롤백"으로 판단, 커밋 후에도 Redis 차감을 되돌림. DB가 최종 판정을 해 초과 판매로는 드러나지 않음 | Spring `TransactionSynchronization.STATUS_COMMITTED`(0)를 사용. 측정 후 Redis·DB 재고 일치 여부를 함께 출력해 검증 |
 | 테스트 실행 시 `Could not resolve placeholder 'JWT_SECRET'` | 시크릿을 환경변수로만 주입해, IDE·Gradle에서 `.env` 없이 테스트하면 컨텍스트 로딩 실패 | Gradle `test` 태스크에 테스트 전용 기본값 설정 (환경변수가 있으면 그 값 우선) |
 | 애플리케이션 기동 실패 (`Could not resolve placeholder 'cors.allowed.origins'`) | YAML 키는 `allowed-origins`인데 `@Value`는 `allowed.origins`로 조회. `@Value`는 relaxed binding을 하지 않음 | `@Value("${cors.allowed-origins}")`로 키 일치 |
 
@@ -535,6 +564,8 @@ k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.j
 | 쿼리 튜닝 | 인덱스 설계, `EXPLAIN ANALYZE` 전후 비교, 커버링·복합 인덱스 순서·correlation 검증 | ✅ 완료 |
 | | Reader·Partitioning 재측정 (배치 2라운드) | ✅ 완료 |
 | | 주문 목록 N+1: batch size / fetch join / DTO 조회 / 페이징 비교 | ✅ 완료 |
+| 재고 동시성 | 락 없음 / 비관적 / 원자적 UPDATE / 낙관적 / Redis 문지기 비교 (1회 측정) | ✅ 1차 완료 |
+| | 반복 측정, 주문 시점 재고 선점, 동시 중복 확정·다중 상품 데드락 | ⏳ 예정 |
 | 코드 점검 | 주문 API IDOR, `@AuthenticationPrincipal` 타입 불일치, 결제 실패 상태 롤백 수정 및 테스트 검증 | ✅ 완료 |
 | 결제 부하 테스트 재측정 | 스크립트 버그 수정, 연결 거부·포화 원인 분석, 정합성 검증 | ✅ 1·2회차 완료 |
 | | 처리 한계 아래 일정 부하 측정, 병목 후보(커넥션 풀·OSIV·JWT 필터 조회) 검증 | ⏳ 다음 |

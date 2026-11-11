@@ -60,4 +60,8 @@ tasks.named('test') {
 	if (project.hasProperty('bench')) {
 		systemProperty 'bench', 'true'
 	}
+	if (project.hasProperty('stockStrategy')) {
+		systemProperty 'stock.strategy', project.property('stockStrategy')
+		systemProperty 'stock.bench', 'true'
+	}
 }

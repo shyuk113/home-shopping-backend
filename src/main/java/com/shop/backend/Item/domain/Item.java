@@ -33,6 +33,9 @@ public class Item extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private ItemCategory category;
 
+    @Version
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "seller_id", nullable = false)
     private Seller seller;
