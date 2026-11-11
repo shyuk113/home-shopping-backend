@@ -18,6 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -48,7 +50,7 @@ public class PaymentService {
 
     @Transactional
     public void confirm(String paymentKey, int approvedAmount, Long userId){
-        Payment payment = paymentRepository.findByPaymentKey(paymentKey)
+        Payment payment = paymentRepository.findByPaymentKeyForUpdate(paymentKey)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제 입니다."));
 
         Order order = payment.getOrder();
@@ -68,7 +70,9 @@ public class PaymentService {
             throw new PaymentFailedException("결제 금액이 주문 금액과 일치 하지 않습니다.");
         }
 
-        for(OrderItem orderItem : order.getOrderItems()){
+        List<OrderItem> itemsInLockOrder = order.getOrderItems().stream().
+                sorted(Comparator.comparing(oi->oi.getItem().getId())).toList();
+        for(OrderItem orderItem : itemsInLockOrder){
             Long itemId = orderItem.getItem().getId();
             if (itemRepository.decreaseStock(itemId, orderItem.getQuantity()) == 0){
                 if (!itemRepository.existsById(itemId)){
