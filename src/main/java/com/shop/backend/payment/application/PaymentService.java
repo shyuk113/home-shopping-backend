@@ -87,7 +87,7 @@ public class PaymentService {
 
     @Transactional
     public void markFailed(String paymentKey, String reason){
-        Payment payment = paymentRepository.findByPaymentKey(paymentKey)
+        Payment payment = paymentRepository.findByPaymentKeyForUpdate(paymentKey)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제 입니다."));
         if(payment.getStatus() != PaymentStatus.READY){   // 그 사이 다른 요청이 처리했으면 건드리지 않음
             return;
