@@ -264,6 +264,30 @@ flowchart LR
 
 전체 측정값, 쿼리 분해, 대안별 코드는 **[주문 목록 N+1 실험 기록](./docs/experiments/order-list-n-plus-one.md)**에 있습니다.
 
+### 6. 판매자 대시보드 (Step 3)
+
+판매자 한 명의 30일 매출 API를 원본 직접 집계 / 집계 테이블 / 집계 테이블 + Redis 캐시로 제공하고, 1,000만 건 DB에서 k6로 비교했습니다. 두 방식의 결과는 양방향 `EXCEPT`로 일치(0행)를 먼저 확인했습니다. (판매자 1~1,000 무작위, 9월 30일치, 각 1회 측정)
+
+| 방식 | 처리 가능 부하 | p50 | DB 트랜잭션/요청 | 읽은 블록/요청 |
+|---|---|---|---|---|
+| 원본 직접 집계 | 초당 2.5~12건에서 포화 | 7.7~26.9s | – | – |
+| 집계 테이블 | 초당 200건 여유 | 7.4ms | 1.99 | 39.7 |
+| **+ Redis 캐시** (히트율 83.4%) | 초당 200건 여유 | **5.9ms** | **1.17** | **9.4** |
+
+| 판단 | 근거 |
+|---|---|
+| 원본 직접 집계는 API로 쓸 수 없음 | 단일 쿼리 265ms(Step 4)도 판매자가 무작위로 바뀌면 9월 전체 데이터가 `shared_buffers`에 안 들어가고, 무거운 쿼리 수십 개가 자원을 나눠 써 수 초~수십 초 |
+| 캐시의 가치는 응답 시간보다 DB 부하 | 응답 시간 -20%, DB 트랜잭션 -41%, 읽은 블록 -76%. 집계 테이블 쿼리는 원래 1ms 미만이라 응답 시간 대부분은 DB 밖(JWT 검증, JSON 변환) |
+| 대시보드 캐시만 타입 지정 직렬화기 | 전역 설정은 final 클래스에 타입 정보를 붙이지 않아, `toList()` 리스트와 record가 타입 정보 없이 저장되고 두 번째 요청부터 역직렬화 실패 |
+| 배치 성공 시 캐시 전체 삭제 | 배치가 집계 테이블을 갱신해도 캐시가 TTL(10분) 동안 옛 매출을 보여주는 것을 재현. 실패한 배치는 부분 갱신 상태라 캐시 유지. 키 삭제는 `KEYS` 대신 `SCAN` |
+
+**측정 중 함께 고친 것**
+- **JWT 필터의 회원 테이블 전체 스캔**: `email`에 인덱스·unique 제약이 없어 매 인증 요청마다 회원 전체를 순차 스캔(요청당 1,008행). 인덱스 추가 후 33.9행. 회원 수에 비례하던 모든 인증 API의 비용 제거, 중복 가입 방지
+- **PostgreSQL 공유 메모리 부족**: 원본 집계를 동시에 실행하면 병렬 해시 조인이 Docker 기본 `/dev/shm`(64MB)을 넘어 요청 37~43% 실패. `shm_size: 1g`
+- **예외를 삼키는 공통 예외 처리기**: 처리되지 않은 예외의 스택 트레이스를 남기지 않아 원인 추적 불가 → 로그 추가
+
+전체 측정값, DB 작업량 계산, 캐시 무효화 재현 절차는 **[판매자 대시보드 실험 기록](./docs/experiments/seller-dashboard.md)**에 있습니다.
+
 ---
 
 ## API 명세
@@ -321,6 +345,11 @@ flowchart LR
 | POST | /api/coupons | 쿠폰 생성 |
 | POST | /api/coupons/{couponId}/issue | 선착순 발급 — `202` 성공 / `400` 중복 / `409` 소진 |
 | GET | /api/coupons/my | 내 쿠폰 목록 조회 |
+
+### Admin (`/api/admin`) — ADMIN 전용
+| Method | URL | 설명 |
+|---|---|---|
+| GET | /api/admin/sellers/{sellerId}/dashboard?from={date}&to={date} | 판매자 일별 매출 (최대 92일, 집계 테이블 + Redis 캐시) |
 
 ---
 
@@ -546,6 +575,11 @@ k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.j
 | 회원 주문 목록 조회 1회에 쿼리 28,639개, 19.3초 | 주문마다 `orderItems`, 주문상품마다 `item`을 지연 로딩(N+1)하고, 회원의 주문 약 1만 건을 한 번에 반환 | 페이징(20건) + `default_batch_fetch_size: 100` → 쿼리 4개, 20ms. 쿼리 수 회귀 테스트 추가 |
 | 락 없이 재고를 차감하면 300건이 모두 성공하는데 재고는 100 → 97 | 변경 감지가 "읽은 값 − 1"을 절대값으로 덮어써, 동시에 100을 읽은 트랜잭션들의 차감이 사라짐 (Lost Update). 재고 값만 보면 이상이 드러나지 않음 | 조건부 원자적 UPDATE로 검사와 차감을 한 문장에서 처리 (방식별 비교 실험으로 검증) |
 | Redis 재고 문지기가 효과 없이 모든 요청을 DB로 보냄 (설계 검토 중 발견) | 커밋 여부 비교에 `jakarta.transaction.Status.STATUS_COMMITTED`(값 3)를 자동 import. Spring `afterCompletion`은 커밋 시 0을 넘겨 항상 "롤백"으로 판단, 커밋 후에도 Redis 차감을 되돌림. DB가 최종 판정을 해 초과 판매로는 드러나지 않음 | Spring `TransactionSynchronization.STATUS_COMMITTED`(0)를 사용. 측정 후 Redis·DB 재고 일치 여부를 함께 출력해 검증 |
+| 대시보드 원본 집계를 동시에 실행하면 요청 37~43%가 즉시 실패 (`could not resize shared memory segment ... No space left on device`) | 병렬 해시 조인 작업자들이 공유 메모리를 쓰는데, Docker 컨테이너의 `/dev/shm` 기본값이 64MB | `docker-compose.yml` postgres에 `shm_size: 1g` → 실패 0%. 운영 compose는 메모리 예산 안에서 조정 필요 |
+| 대시보드 응답은 30행인데 요청당 1,000행 스캔 | JWT 필터의 `findByEmail`이 매 요청 실행되는데 `email`에 인덱스가 없어 회원 테이블 전체 순차 스캔 (unique 제약도 없어 중복 가입 가능) | `email`에 unique 인덱스 추가 → 요청당 스캔 1,008 → 33.9행 |
+| 대시보드 캐시가 첫 요청은 200, 두 번째 요청부터 500 | 전역 Redis 직렬화기가 final 클래스에는 타입 정보를 붙이지 않는데, `Stream.toList()` 리스트(`ImmutableCollections$ListN`)와 record 원소 모두 final이라 타입 정보 없이 저장됨 | 대시보드 캐시만 `JacksonJsonRedisSerializer<CachedDailySales>`로 타입을 고정 |
+| 500 오류가 나도 서버 로그에 아무것도 없음 | 공통 예외 처리기가 `Exception`을 받아 응답만 만들고 로그를 남기지 않음 | `log.error`로 스택 트레이스 기록 (응답에는 일반 메시지만) |
+| 배치가 집계 테이블을 갱신했는데 대시보드는 옛 매출을 보여줌 | 캐시가 TTL(10분) 동안 배치 전 값을 유지 (집계 테이블 한 행을 조작 → 캐시 → 배치로 복구하는 방식으로 재현) | 배치 성공 시 `JobExecutionListener`에서 대시보드 캐시 삭제. 키 탐색은 `KEYS` 대신 `SCAN` |
 | 테스트 실행 시 `Could not resolve placeholder 'JWT_SECRET'` | 시크릿을 환경변수로만 주입해, IDE·Gradle에서 `.env` 없이 테스트하면 컨텍스트 로딩 실패 | Gradle `test` 태스크에 테스트 전용 기본값 설정 (환경변수가 있으면 그 값 우선) |
 | 애플리케이션 기동 실패 (`Could not resolve placeholder 'cors.allowed.origins'`) | YAML 키는 `allowed-origins`인데 `@Value`는 `allowed.origins`로 조회. `@Value`는 relaxed binding을 하지 않음 | `@Value("${cors.allowed-origins}")`로 키 일치 |
 
@@ -569,7 +603,9 @@ k6 run --summary-export=loadtest/result-payment.json loadtest/payment-scenario.j
 | 코드 점검 | 주문 API IDOR, `@AuthenticationPrincipal` 타입 불일치, 결제 실패 상태 롤백 수정 및 테스트 검증 | ✅ 완료 |
 | 결제 부하 테스트 재측정 | 스크립트 버그 수정, 연결 거부·포화 원인 분석, 정합성 검증 | ✅ 1·2회차 완료 |
 | | 처리 한계 아래 일정 부하 측정, 병목 후보(커넥션 풀·OSIV·JWT 필터 조회) 검증 | ⏳ 다음 |
-| 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95 측정 | ⏳ 예정 |
+| 데이터 서빙 API | 판매자 대시보드 조회: 원본 직접 집계 → 집계 테이블 → Redis Cache-Aside 단계별 p95·DB 작업량 측정 | ✅ 완료 |
+| | 배치 완료 후 캐시 무효화 | ✅ 완료 |
+| | 캐시 스탬피드 대응, JWT 필터 회원 조회 제거, 판매자 본인 조회 | ⏳ 예정 |
 | | 파티션 수와 동시 실행 수 분리 (하루 단위 파티션 + 동시 실행 제한) | ⏳ 예정 |
 
-**쿼리 튜닝 결과**: 배치 Reader 쿼리 2.4s → 0.38s, 월 집계 배치 24.6s → 5.9s, 회원 주문 조회 266ms → 18.5ms, 주문 목록 API 쿼리 28,639개 · 19.3s → 4개 · 20ms
+**쿼리 튜닝 결과**: 배치 Reader 쿼리 2.4s → 0.38s, 월 집계 배치 24.6s → 5.9s, 회원 주문 조회 266ms → 18.5ms, 주문 목록 API 쿼리 28,639개 · 19.3s → 4개 · 20ms, 판매자 대시보드 p50 수 초(원본 집계) → 5.9ms(집계 테이블 + 캐시)
