@@ -90,10 +90,14 @@ public class DailySalesSummaryJobConfig {
 
 
     @Bean
-    public Job dailySalesSummaryJob(Step deleteDailySalesSummaryStep, Step aggregateDailySalesManagerStep,JobResultLoggingListener jobResultLoggingListener){
+    public Job dailySalesSummaryJob(Step deleteDailySalesSummaryStep,
+                                    Step aggregateDailySalesManagerStep,
+                                    JobResultLoggingListener jobResultLoggingListener,
+                                    DashboardCacheEvictListener dashboardCacheEvictListener) {
         return new JobBuilder(JOB_NAME, jobRepository)
                 .validator(new SalesPeriodParametersValidator())
                 .listener(jobResultLoggingListener)
+                .listener(dashboardCacheEvictListener)
                 .start(deleteDailySalesSummaryStep)
                 .next(aggregateDailySalesManagerStep)
                 .build();
