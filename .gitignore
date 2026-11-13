@@ -39,3 +39,4 @@ out/
 
 ### Env ###
 .env
+loadtest/bench_admin.http
