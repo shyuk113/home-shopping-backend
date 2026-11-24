@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface CouponRepository extends JpaRepository<Coupon, Long> {
+public interface CouponJpaRepository extends JpaRepository<Coupon, Long> {
 
     @Modifying(clearAutomatically = true)
     @Query("UPDATE Coupon c SET c.issuedQuantity = c.issuedQuantity + 1 WHERE c.id = :couponId")
