@@ -1,16 +1,16 @@
 package com.shop.backend.order.application;
 
 import com.shop.backend.Item.domain.Item;
-import com.shop.backend.Item.domain.ItemRepository;
+import com.shop.backend.Item.infrastructure.ItemRepository;
 import com.shop.backend.global.exception.OutOfStockException;
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.domain.MemberRepository;
+import com.shop.backend.member.infrastructure.MemberRepository;
 import com.shop.backend.order.domain.Order;
 import com.shop.backend.order.domain.OrderItem;
 import com.shop.backend.order.domain.OrderStatus;
-import com.shop.backend.order.domain.OrderRepository;
+import com.shop.backend.order.infrastructure.OrderRepository;
 import com.shop.backend.order.application.dto.response.OrderResponse;
-import com.shop.backend.global.exception.NotFoundException;
+import jakarta.persistence.EntityNotFoundException;
 
 import java.util.List;
 
@@ -30,8 +30,8 @@ public class OrderService {
 
     @Transactional
     public Long order(Long memberId, Long itemId, int quantity){
-        Member member = memberRepository.findById(memberId).orElseThrow(()-> new NotFoundException("Member not found"));
-        Item item = itemRepository.findById(itemId).orElseThrow(()-> new NotFoundException("Item not found"));
+        Member member = memberRepository.findById(memberId).orElseThrow(()-> new EntityNotFoundException("Member not found"));
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("Item not found"));
 
         if (item.getQuantity() < quantity){
             throw new OutOfStockException("재고가 부족합니다. 현재 남은 재고: " + item.getQuantity());
@@ -81,14 +81,14 @@ public class OrderService {
     @Transactional(readOnly = true) // 단건 조회
     public OrderResponse getOrder(Long orderId, Long memberId){
         Order order = orderRepository.findByIdAndMemberId(orderId, memberId)
-            .orElseThrow(() -> new NotFoundException("Order not found"));
+            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
         return OrderResponse.from(order);
     }
 
     @Transactional // 주문 취소
     public void cancelOrder(Long orderId, Long memberId){
         Order order = orderRepository.findByIdAndMemberId(orderId, memberId)
-            .orElseThrow(()-> new NotFoundException("Order not found"));
+            .orElseThrow(()-> new EntityNotFoundException("Order not found"));
 
         if(order.getStatus() == OrderStatus.CANCEL){
             throw new IllegalStateException("이미 취소된 주문입니다.");

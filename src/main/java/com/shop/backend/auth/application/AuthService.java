@@ -1,7 +1,7 @@
 package com.shop.backend.auth.application;
 
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.domain.MemberRepository;
+import com.shop.backend.member.infrastructure.MemberRepository;
 import com.shop.backend.global.exception.UnauthorizedException;
 import com.shop.backend.global.jwt.JwtProvider;
 import lombok.RequiredArgsConstructor;

@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.shop.backend.coupon.application.dto.request.CouponCreateRequestDto;
 import com.shop.backend.coupon.domain.Coupon;
-import com.shop.backend.coupon.domain.CouponRepository;
-import com.shop.backend.coupon.domain.MemberCouponRepository;
+import com.shop.backend.coupon.infrastructure.CouponRepository;
+import com.shop.backend.coupon.infrastructure.MemberCouponRepository;
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.domain.MemberRepository;
+import com.shop.backend.member.infrastructure.MemberRepository;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

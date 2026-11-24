@@ -5,12 +5,12 @@ import com.shop.backend.Item.application.dto.response.ItemResponseDto;
 import com.shop.backend.Item.domain.Item;
 import com.shop.backend.Item.domain.ItemCategory;
 import com.shop.backend.Item.domain.ItemStatus;
-import com.shop.backend.Item.domain.ItemRepository;
+import com.shop.backend.Item.infrastructure.ItemRepository;
 
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.domain.MemberRepository;
+import com.shop.backend.member.infrastructure.MemberRepository;
 import com.shop.backend.seller.domain.Seller;
-import com.shop.backend.seller.domain.SellerRepository;
+import com.shop.backend.seller.infrastructure.SellerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

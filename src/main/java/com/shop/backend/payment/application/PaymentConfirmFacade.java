@@ -2,7 +2,7 @@ package com.shop.backend.payment.application;
 
 import com.shop.backend.global.exception.PaymentFailedException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.ThreadLocalRandom;
@@ -21,7 +21,7 @@ public class PaymentConfirmFacade {
             try{
                 paymentService.confirm(paymentKey, approvedAmount, userId);
                 return;
-            } catch (OptimisticLockingFailureException e){
+            } catch (ObjectOptimisticLockingFailureException e){
                 if(attempt >= MAX_ATTEMPT){
                     throw e;
                 }

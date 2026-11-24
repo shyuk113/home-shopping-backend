@@ -3,16 +3,16 @@ package com.shop.backend.Item.application;
 import com.shop.backend.Item.application.dto.request.ItemCreateRequestDto;
 import com.shop.backend.Item.domain.Item;
 import com.shop.backend.Item.domain.ItemCategory;
-import com.shop.backend.Item.domain.ItemRepository;
+import com.shop.backend.Item.infrastructure.ItemRepository;
 import com.shop.backend.Item.application.dto.response.ItemResponseDto;
 import com.shop.backend.Item.application.dto.request.ItemUpdateRequestDto;
 import com.shop.backend.global.exception.UnauthorizedException;
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.domain.MemberRepository;
+import com.shop.backend.member.infrastructure.MemberRepository;
 
 import com.shop.backend.seller.domain.Seller;
-import com.shop.backend.seller.domain.SellerRepository;
-import com.shop.backend.global.exception.NotFoundException;
+import com.shop.backend.seller.infrastructure.SellerRepository;
+import jakarta.persistence.EntityNotFoundException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +52,7 @@ public class ItemService {
     public ItemResponseDto getItemDetail(Long id){
         log.debug("DB 조회 실행됨 - id: {}", id);
 
-        Item item = itemRepository.findById(id).orElseThrow(()->new NotFoundException("존재하지 않는 상품입니다."));
+        Item item = itemRepository.findById(id).orElseThrow(()->new EntityNotFoundException("존재하지 않는 상품입니다."));
         return ItemResponseDto.from(item);
     }
 
@@ -74,11 +74,11 @@ public class ItemService {
     //상품 등록
     @Transactional
     public ItemResponseDto createItem(Long userId, ItemCreateRequestDto request){
-        Member member = memberRepository.findById(userId).orElseThrow(()-> new NotFoundException("존재하지 않는 회원입니다."));
+        Member member = memberRepository.findById(userId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 회원입니다."));
         if(member.getRole() != Member.Role.ADMIN){
             throw new UnauthorizedException("상품 등록은 관리자만 할 수 있습니다.");
         }
-        Seller seller = sellerRepository.findById(request.sellerId()).orElseThrow(()-> new NotFoundException("존재하지 않는 판매자 입니다."));
+        Seller seller = sellerRepository.findById(request.sellerId()).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 판매자 입니다."));
         Item item = Item.createItem(seller, request.name(), request.price(), request.quantity(), request.description(), request.imageUrl(), request.status(), request.category());
         itemRepository.save(item);
         return  ItemResponseDto.from(item);
@@ -88,11 +88,11 @@ public class ItemService {
     @CacheEvict(value = "item", key = "#p0") //상품 수정시 캐시 무효화
     @Transactional
     public void updateItem(Long itemId, ItemUpdateRequestDto request, Long userId) {
-        Member member = memberRepository.findById(userId).orElseThrow(() -> new NotFoundException("존재하지 않는 회원입니다."));
+        Member member = memberRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("존재하지 않는 회원입니다."));
         if (member.getRole() != Member.Role.ADMIN) {
             throw new UnauthorizedException("상품 등록은 관리자만 할 수 있습니다.");
         }
-        Item item = itemRepository.findById(itemId).orElseThrow(() -> new NotFoundException("존재하지 않는 상품입니다."));
+        Item item = itemRepository.findById(itemId).orElseThrow(() -> new EntityNotFoundException("존재하지 않는 상품입니다."));
         item.update(request.itemName(), request.price(), request.quantity(), request.description(), request.imageUrl(), request.status(), request.category());
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -118,7 +118,7 @@ public class ItemService {
     @CachePut(value = "item", key = "#p0")
     @Transactional
     public ItemResponseDto updateItemWithCachePut(Long itemId, ItemUpdateRequestDto request){
-        Item item = itemRepository.findById(itemId).orElseThrow(()-> new NotFoundException("존재하지 않는 상품입니다."));
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 상품입니다."));
         item.update(request.itemName(), request.price(), request.quantity(), request.description(), request.imageUrl(), request.status(), request.category());
         return ItemResponseDto.from(item);
     }
@@ -128,7 +128,7 @@ public class ItemService {
     @Transactional
     public void deleteItem(Long id, Long userId){
 
-        Member member = memberRepository.findById(userId).orElseThrow(()-> new NotFoundException("존재하지 않는 회원입니다."));
+        Member member = memberRepository.findById(userId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 회원입니다."));
         if(member.getRole() != Member.Role.ADMIN){
             throw new UnauthorizedException("상품 등록은 관리자만 할 수 있습니다.");
         }
@@ -142,7 +142,7 @@ public class ItemService {
     })
     @Transactional
     public void reduceStock(Long itemId, int quantity){
-        Item item = itemRepository.findById(itemId).orElseThrow(()-> new NotFoundException("존재하지 않는 상품입니다."));
+        Item item = itemRepository.findById(itemId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 상품입니다."));
         item.removeStock(quantity);
     }
 }

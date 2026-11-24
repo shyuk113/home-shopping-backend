@@ -1,7 +1,7 @@
 package com.shop.backend.sales.application.source;
 
 import com.shop.backend.sales.application.dto.DailySalesResponse;
-import com.shop.backend.sales.domain.DailySalesSummaryRepository;
+import com.shop.backend.sales.infrastructure.DailySalesSummaryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
