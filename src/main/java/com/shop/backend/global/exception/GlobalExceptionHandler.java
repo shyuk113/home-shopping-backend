@@ -1,6 +1,5 @@
 package com.shop.backend.global.exception;
 
-import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,8 +16,8 @@ public class GlobalExceptionHandler {
             .body(ErrorResponse.of(e.getMessage()));
     }
 
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleEntityNotFound(EntityNotFoundException e){
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException e){
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse.of(e.getMessage()));
     }
