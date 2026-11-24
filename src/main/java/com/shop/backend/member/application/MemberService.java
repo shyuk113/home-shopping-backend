@@ -1,10 +1,10 @@
 package com.shop.backend.member.application;
 
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.infrastructure.MemberRepository;
+import com.shop.backend.member.domain.MemberRepository;
 import com.shop.backend.member.application.dto.request.MemberUpdateRequestDto;
 import com.shop.backend.member.application.dto.response.MemberResponseDto;
-import jakarta.persistence.EntityNotFoundException;
+import com.shop.backend.global.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,13 +16,13 @@ public class MemberService {
 
     @Transactional(readOnly = true)
     public MemberResponseDto getMember(Long memberId){
-        Member member =memberRepository.findById(memberId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 회원입니다."));
+        Member member =memberRepository.findById(memberId).orElseThrow(()-> new NotFoundException("존재하지 않는 회원입니다."));
         return MemberResponseDto.from(member);
     }
 
     @Transactional
     public MemberResponseDto updateMember(Long memberId, MemberUpdateRequestDto dto){
-        Member member = memberRepository.findById(memberId).orElseThrow(()-> new EntityNotFoundException("존재하지 않는 회원입니다."));
+        Member member = memberRepository.findById(memberId).orElseThrow(()-> new NotFoundException("존재하지 않는 회원입니다."));
         member.update(dto.name(), dto.phone(), dto.address());
         return MemberResponseDto.from(member);
     }

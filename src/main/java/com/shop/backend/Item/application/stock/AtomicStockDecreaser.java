@@ -1,7 +1,7 @@
 package com.shop.backend.Item.application.stock;
 
-import com.shop.backend.Item.infrastructure.ItemRepository;
-import jakarta.persistence.EntityNotFoundException;
+import com.shop.backend.Item.domain.ItemRepository;
+import com.shop.backend.global.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -19,7 +19,7 @@ public class AtomicStockDecreaser implements StockDecreaser {
             return true;
         }
         if(!itemRepository.existsById(itemId)){
-            throw new EntityNotFoundException("존재하지 않는 상품입니다.");
+            throw new NotFoundException("존재하지 않는 상품입니다.");
         }
         return false;
     }

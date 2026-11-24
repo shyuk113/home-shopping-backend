@@ -1,7 +1,7 @@
 package com.shop.backend.global.jwt;
 
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.infrastructure.MemberRepository;
+import com.shop.backend.member.domain.MemberRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

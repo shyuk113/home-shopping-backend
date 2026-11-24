@@ -2,14 +2,14 @@ package com.shop.backend.payment.application;
 
 import com.shop.backend.Item.domain.Item;
 import com.shop.backend.Item.domain.ItemStatus;
-import com.shop.backend.Item.infrastructure.ItemRepository;
+import com.shop.backend.Item.domain.ItemRepository;
 import com.shop.backend.global.exception.PaymentFailedException;
 import com.shop.backend.member.domain.Member;
-import com.shop.backend.member.infrastructure.MemberRepository;
+import com.shop.backend.member.domain.MemberRepository;
 import com.shop.backend.order.application.OrderService;
 import com.shop.backend.payment.domain.PaymentMethod;
 import com.shop.backend.seller.domain.Seller;
-import com.shop.backend.seller.infrastructure.SellerRepository;
+import com.shop.backend.seller.domain.SellerRepository;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;

@@ -2,7 +2,7 @@ package com.shop.backend.sales.application;
 
 import com.shop.backend.sales.application.dto.CachedDailySales;
 import com.shop.backend.sales.application.dto.DailySalesResponse;
-import com.shop.backend.sales.infrastructure.DailySalesSummaryRepository;
+import com.shop.backend.sales.domain.DailySalesSummaryRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;

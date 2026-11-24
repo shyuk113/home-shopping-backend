@@ -3,13 +3,13 @@ package com.shop.backend.coupon.application;
 import com.shop.backend.coupon.domain.Coupon;
 import com.shop.backend.coupon.domain.CouponIssueResult;
 import com.shop.backend.coupon.infrastructure.CouponIssueProducer;
-import com.shop.backend.coupon.infrastructure.CouponRepository;
-import com.shop.backend.coupon.infrastructure.MemberCouponRepository;
+import com.shop.backend.coupon.domain.CouponRepository;
+import com.shop.backend.coupon.domain.MemberCouponRepository;
 import com.shop.backend.coupon.application.dto.request.CouponCreateRequestDto;
 import com.shop.backend.coupon.application.dto.response.CouponResponse;
 import com.shop.backend.global.exception.CouponOutOfStockException;
 import com.shop.backend.global.exception.DuplicateCouponException;
-import jakarta.persistence.EntityNotFoundException;
+import com.shop.backend.global.exception.NotFoundException;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -84,7 +84,7 @@ public class CouponService {
             case DUPLICATE -> throw new DuplicateCouponException("이미 발급받은 쿠폰입니다.");
             case SOLD_OUT -> throw new CouponOutOfStockException("쿠폰이 모두 소진되었습니다.");
             case NOT_IN_PERIOD -> throw new IllegalStateException("쿠폰 발급 기간이 아닙니다.");
-            case NOT_FOUND -> throw new EntityNotFoundException("존재하지 않는 쿠폰입니다.");
+            case NOT_FOUND -> throw new NotFoundException("존재하지 않는 쿠폰입니다.");
         }
     }
 
