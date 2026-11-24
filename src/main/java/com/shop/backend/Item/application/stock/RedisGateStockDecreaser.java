@@ -1,7 +1,7 @@
 package com.shop.backend.Item.application.stock;
 
-import com.shop.backend.Item.domain.ItemRepository;
-import com.shop.backend.global.exception.NotFoundException;
+import com.shop.backend.Item.infrastructure.ItemRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -55,7 +55,7 @@ public class RedisGateStockDecreaser implements StockDecreaser {
             return;
         }
         int dbQuantity = itemRepository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException("존재 하지 않는 상품입니다."))
+                .orElseThrow(() -> new EntityNotFoundException("존재 하지 않는 상품입니다."))
                 .getQuantity();
         redis.opsForValue().setIfAbsent(key, String.valueOf(dbQuantity));
     }

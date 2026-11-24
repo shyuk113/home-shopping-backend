@@ -4,7 +4,7 @@ import com.shop.backend.coupon.domain.MemberCoupon;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface MemberCouponJpaRepository extends JpaRepository<MemberCoupon, Long> {
+public interface MemberCouponRepository extends JpaRepository<MemberCoupon, Long> {
 
     List<MemberCoupon> findByMemberId(Long memberId);
 

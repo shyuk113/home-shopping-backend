@@ -10,7 +10,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
-public interface PaymentJpaRepository extends JpaRepository<Payment, Long> {
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByPaymentKey(String paymentKey);
     boolean existsByOrder_IdAndStatus(Long orderId, PaymentStatus status);

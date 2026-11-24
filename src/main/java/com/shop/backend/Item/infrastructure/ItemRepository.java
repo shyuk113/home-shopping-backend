@@ -14,7 +14,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
-public interface ItemJpaRepository extends JpaRepository<Item, Long> {
+public interface ItemRepository extends JpaRepository<Item, Long> {
 
     // 비관적 락 대신 DB의 원자적 UPDATE로 재고를 차감한다.
     // WHERE 절의 quantity >= :quantity 조건이 재고 부족 체크를 대체하며,
